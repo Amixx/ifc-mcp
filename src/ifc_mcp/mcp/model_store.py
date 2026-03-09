@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Callable
 
-from ifc_mcp.core.index import ModelIndex, build_index
-from ifc_mcp.core.parser import parse_ifc
-from ifc_mcp.core.scene import build_scene_model
+from ifc_mcp.core.index import ModelIndex
+from ifc_mcp.core.pipeline import load_model_artifacts
+
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 class ModelStore:
     """In-memory cache of loaded IFC models for one server process."""
 
-    def __init__(self) -> None:
+    def __init__(self, progress_callback: ProgressCallback | None = None) -> None:
         self._cache: dict[str, ModelIndex] = {}
         self._active_path: str | None = None
+        self._progress_callback = progress_callback
 
     @property
     def active_path(self) -> str | None:
@@ -32,9 +35,8 @@ class ModelStore:
         """Load and activate model from file path (cached by absolute path)."""
         normalized = self.normalize_path(file_path)
         if normalized not in self._cache:
-            parsed = parse_ifc(normalized)
-            scene = build_scene_model(parsed)
-            self._cache[normalized] = build_index(parsed, scene)
+            _, _, index = load_model_artifacts(normalized, progress_callback=self._progress_callback)
+            self._cache[normalized] = index
         self._active_path = normalized
         return self._cache[normalized]
 

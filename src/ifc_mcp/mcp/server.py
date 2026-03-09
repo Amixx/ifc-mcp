@@ -2,23 +2,28 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from ifc_mcp.core.index import ModelIndex, build_index
-from ifc_mcp.core.parser import parse_ifc
-from ifc_mcp.core.scene import build_scene_model
+from ifc_mcp.core.index import ModelIndex
+from ifc_mcp.core.pipeline import load_model_artifacts
 from ifc_mcp.mcp.model_store import ModelStore
 from ifc_mcp.mcp.tools import analysis, meta, quantities, query, relationships, spatial
 
 
-def load_index(file_path: str) -> ModelIndex:
+def load_index(
+    file_path: str,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> ModelIndex:
     """Parse IFC file and build the in-memory model index."""
-    parsed = parse_ifc(file_path)
-    scene = build_scene_model(parsed)
-    return build_index(parsed, scene)
+    _, _, index = load_model_artifacts(file_path, progress_callback=progress_callback)
+    return index
 
 
-def create_mcp_server(index: ModelIndex | None = None, file_path: str | None = None):
+def create_mcp_server(
+    index: ModelIndex | None = None,
+    file_path: str | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+):
     """Create FastMCP server instance with all IFC tools registered."""
     try:
         from fastmcp import FastMCP
@@ -26,7 +31,7 @@ def create_mcp_server(index: ModelIndex | None = None, file_path: str | None = N
         raise RuntimeError("fastmcp is required to run the MCP server") from exc
 
     mcp = FastMCP("ifc-mcp")
-    store = ModelStore()
+    store = ModelStore(progress_callback=progress_callback)
 
     if index is not None:
         store.set_active_index(index, label=file_path or "<in-memory>")
@@ -228,9 +233,10 @@ def run_server(
     transport: str = "stdio",
     port: int = 8000,
     host: str = "127.0.0.1",
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     """Run the MCP server with stdio or HTTP transport."""
-    mcp = create_mcp_server(file_path=file_path)
+    mcp = create_mcp_server(file_path=file_path, progress_callback=progress_callback)
 
     if transport == "stdio":
         if hasattr(mcp, "run"):

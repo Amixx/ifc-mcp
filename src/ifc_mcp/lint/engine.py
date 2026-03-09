@@ -3,36 +3,53 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Callable
 
-from ifc_mcp.core.index import build_index
-from ifc_mcp.core.parser import parse_ifc
-from ifc_mcp.core.scene import build_scene_model
+from ifc_mcp.core.pipeline import load_model_artifacts
 from ifc_mcp.core.types import LintResult
 
 from .config import load_lint_config
 from .rules import RULE_FUNCTIONS, RULES
 
 
-def lint_ifc_model(file_path: str, config_path: str | None = None) -> dict[str, Any]:
+def lint_ifc_model(
+    file_path: str,
+    config_path: str | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     """Run active lint rules against an IFC model."""
-    parsed = parse_ifc(file_path)
-    scene = build_scene_model(parsed)
-    index = build_index(parsed, scene)
+    _, _, index = load_model_artifacts(file_path, progress_callback=progress_callback)
 
     config = load_lint_config(config_path)
     severities: dict[str, str] = config.get("rules", {})
+    active_rules = [rule_id for rule_id in RULE_FUNCTIONS if severities.get(rule_id, "off") != "off"]
 
     findings: list[LintResult] = []
-    for rule_id, rule_fn in RULE_FUNCTIONS.items():
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "lint",
+                "message": "Running lint rules",
+                "processed": 0,
+                "total": len(active_rules),
+            }
+        )
+    for processed, rule_id in enumerate(active_rules, start=1):
+        rule_fn = RULE_FUNCTIONS[rule_id]
         severity = severities.get(rule_id, "off")
-        if severity == "off":
-            continue
-
         rule_findings = rule_fn(index)
         for finding in rule_findings:
             finding.severity = severity
             findings.append(finding)
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": "lint",
+                    "message": f"Evaluated rule: {rule_id}",
+                    "processed": processed,
+                    "total": len(active_rules),
+                }
+            )
 
     summary = {
         "errors": sum(1 for item in findings if item.severity == "error"),

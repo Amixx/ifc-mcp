@@ -7,16 +7,20 @@ from pathlib import Path
 
 import click
 
-from ifc_mcp.core.index import build_index
-from ifc_mcp.core.parser import parse_ifc
-from ifc_mcp.core.scene import build_scene_model
+from ifc_mcp.core.pipeline import load_model_artifacts
+from ifc_mcp.core.progress import CliProgressReporter
 
 
 @click.command("info")
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-def info_command(file_path: Path) -> None:
+@click.option("--quiet", is_flag=True, help="Suppress progress output.")
+@click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
+def info_command(file_path: Path, quiet: bool, verbose: bool) -> None:
     """Print quick model summary as JSON."""
-    parsed = parse_ifc(str(file_path))
-    scene = build_scene_model(parsed)
-    index = build_index(parsed, scene)
+    if quiet and verbose:
+        raise click.UsageError("Cannot use --quiet and --verbose together.")
+    reporter = CliProgressReporter(enabled=not quiet, verbose=verbose)
+    reporter.begin(str(file_path), label="info")
+    _, _, index = load_model_artifacts(str(file_path), progress_callback=reporter.event if reporter.enabled else None)
+    reporter.done(label="info")
     click.echo(json.dumps(index.get_summary(), indent=2))

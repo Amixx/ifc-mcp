@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import asdict
-from typing import Any
+from pathlib import Path
+import time
+from typing import Any, Callable
 
 import ifcopenshell
 import ifcopenshell.util.element
@@ -13,10 +15,37 @@ import ifcopenshell.util.placement
 from .types import ClassificationReference, EntityRecord, MaterialComponent, ParsedModel
 
 
-def parse_ifc(filepath: str) -> ParsedModel:
+def parse_ifc(
+    filepath: str,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> ParsedModel:
     """Parse an IFC file into normalized metadata, entities, and relationships."""
+    started_at = time.monotonic()
+    file_size_bytes = None
+    try:
+        file_size_bytes = Path(filepath).stat().st_size
+    except OSError:
+        file_size_bytes = None
+    _emit_progress(
+        progress_callback,
+        {
+            "stage": "open",
+            "message": "Opening IFC file",
+            "file_path": filepath,
+            "file_size_bytes": file_size_bytes,
+            "elapsed_seconds": 0.0,
+        },
+    )
     ifc = ifcopenshell.open(filepath)
 
+    _emit_progress(
+        progress_callback,
+        {
+            "stage": "relationships",
+            "message": "Extracting relationship maps",
+            "elapsed_seconds": round(time.monotonic() - started_at, 2),
+        },
+    )
     group_map, group_relationships = _build_group_map(ifc)
     material_map, material_relationships = _build_material_map(ifc)
     classification_map, classification_relationships = _build_classification_map(ifc)
@@ -28,7 +57,22 @@ def parse_ifc(filepath: str) -> ParsedModel:
     entities: dict[str, EntityRecord] = {}
     duplicate_guids: list[str] = []
 
-    for element in _iter_entity_candidates(ifc):
+    candidates = _iter_entity_candidates(ifc)
+    total_candidates = len(candidates)
+    _emit_progress(
+        progress_callback,
+        {
+            "stage": "entities",
+            "message": "Extracting entities",
+            "processed": 0,
+            "total": total_candidates,
+            "elapsed_seconds": round(time.monotonic() - started_at, 2),
+            "eta_seconds": None,
+        },
+    )
+
+    report_every = max(1, total_candidates // 10) if total_candidates else 1
+    for idx, element in enumerate(candidates, start=1):
         guid = getattr(element, "GlobalId", None)
         if not guid:
             continue
@@ -53,6 +97,23 @@ def parse_ifc(filepath: str) -> ParsedModel:
             geometry_bounds=_extract_geometry_bounds(element),
         )
 
+        if idx % report_every == 0 or idx == total_candidates:
+            elapsed = time.monotonic() - started_at
+            per_item = elapsed / idx if idx else 0.0
+            remaining = max(total_candidates - idx, 0)
+            eta_seconds = round(per_item * remaining, 2)
+            _emit_progress(
+                progress_callback,
+                {
+                    "stage": "entities",
+                    "message": "Extracting entities",
+                    "processed": idx,
+                    "total": total_candidates,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "eta_seconds": eta_seconds,
+                },
+            )
+
     relationships: dict[str, Any] = {
         "voids": voids,
         "fills": fills,
@@ -66,12 +127,23 @@ def parse_ifc(filepath: str) -> ParsedModel:
         "associates_classification": classification_relationships,
     }
 
-    return ParsedModel(
+    parsed = ParsedModel(
         metadata=_extract_metadata(ifc),
         entities=entities,
         relationships=relationships,
         duplicate_guids=sorted(set(duplicate_guids)),
     )
+    _emit_progress(
+        progress_callback,
+        {
+            "stage": "done",
+            "message": "Parsing complete",
+            "entities": len(parsed.entities),
+            "duplicates": len(parsed.duplicate_guids),
+            "elapsed_seconds": round(time.monotonic() - started_at, 2),
+        },
+    )
+    return parsed
 
 
 def parse(filepath: str) -> dict[str, Any]:
@@ -83,6 +155,12 @@ def parse(filepath: str) -> dict[str, Any]:
         "relationships": parsed.relationships,
         "duplicate_guids": parsed.duplicate_guids,
     }
+
+
+def _emit_progress(callback: Callable[[dict[str, Any]], None] | None, event: dict[str, Any]) -> None:
+    """Emit parser progress events when callback is configured."""
+    if callback is not None:
+        callback(event)
 
 
 def _iter_entity_candidates(ifc) -> list[Any]:
