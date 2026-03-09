@@ -1,0 +1,14 @@
+{
+  "name": "ifc-mcp",
+  "version": "0.1.0",
+  "description": "Explore and query IFC building models using natural language",
+  "keywords": [
+    "IFC",
+    "BIM",
+    "AEC",
+    "architecture",
+    "engineering",
+    "building",
+    "buildingSMART"
+  ]
+}

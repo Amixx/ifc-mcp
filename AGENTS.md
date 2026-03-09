@@ -13,6 +13,7 @@
 - Lint engine with configurable `.ifclintrc` and built-in rule set.
 - Test suite (`34` passing tests) covering parser/scene/index/tools/lint + edge-case synthetic models.
 - Raw IFC fixtures are consumed directly from `data/` (no duplicated copies in `sample_models/`).
+- Cowork plugin assets are isolated under `cowork-plugin/` (manifest, MCP config, skills, commands, packaging script).
 
 ## Why this structure
 
@@ -33,3 +34,5 @@
 - If adding geometry-heavy features, consider lazy/on-demand geometry extraction to avoid startup cost on large models.
 - Keep new tool functions pure (`index` in, JSON-serializable dict out).
 - Preserve deterministic behavior across parser/index/lint/diff (no non-deterministic ordering in outputs).
+- Keep README naming uppercase (`README.md`) for root and any future submodule docs.
+- Local development notes live in gitignored `internal-docs/` (architecture notes, lessons learned, experiments).

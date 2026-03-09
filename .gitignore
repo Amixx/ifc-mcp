@@ -131,3 +131,6 @@ dmypy.json
 
 # OS
 .DS_Store
+
+# Local-only engineering notes
+internal-docs/
