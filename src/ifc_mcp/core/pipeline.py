@@ -16,7 +16,7 @@ ProgressCallback = Callable[[dict[str, Any]], None]
 def load_model_artifacts(
     file_path: str,
     progress_callback: ProgressCallback | None = None,
-    extract_geometry: bool = True,
+    extract_geometry: bool = False,
 ) -> tuple[ParsedModel, SceneModel, ModelIndex]:
     """Load one IFC file and build parsed, scene, and index artifacts."""
     started_at = time.monotonic()
@@ -39,7 +39,12 @@ def load_model_artifacts(
 
     index_started_at = time.monotonic()
     _emit(progress_callback, {"stage": "index", "message": "Building lookup index", "file_path": file_path})
-    index = build_index(parsed, scene)
+    index = build_index(
+        parsed,
+        scene,
+        source_file=file_path,
+        geometry_loaded=extract_geometry,
+    )
     _emit(
         progress_callback,
         {

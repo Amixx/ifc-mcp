@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from ifc_mcp.core.geometry import extract_element_bounds
 from ifc_mcp.core.index import ModelIndex
 
 
@@ -31,13 +32,37 @@ def list_property_sets(index: ModelIndex, ifc_class: str | None = None) -> dict[
     return {"count": len(rows), "property_sets": rows}
 
 
-def get_element_geometry_bounds(index: ModelIndex, global_id: str) -> dict[str, Any]:
+def get_element_geometry_bounds(
+    index: ModelIndex,
+    global_id: str,
+    file_path: str | None = None,
+) -> dict[str, Any]:
     """Return element bounding box min/max coordinates if available."""
     entity = index.get_entity(global_id)
     if not entity:
         return {"error": f"Element not found: {global_id}"}
 
+    if entity.geometry_bounds:
+        return {
+            "global_id": global_id,
+            "bounds": entity.geometry_bounds,
+            "source": "cached",
+        }
+
+    effective_path = file_path or index.source_file
+    if effective_path:
+        bounds = extract_element_bounds(effective_path, global_id)
+        if bounds is not None:
+            # Cache into active in-memory index so repeated requests are O(1).
+            entity.geometry_bounds = bounds
+            return {
+                "global_id": global_id,
+                "bounds": bounds,
+                "source": "on_demand",
+            }
+
     return {
         "global_id": global_id,
-        "bounds": entity.geometry_bounds,
+        "bounds": None,
+        "source": "missing",
     }

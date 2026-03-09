@@ -29,6 +29,8 @@ class ModelIndex:
     type_map: dict[str, list[EntityRecord]]
     connected: dict[str, list[dict[str, str]]]
     duplicate_guids: list[str]
+    source_file: str | None = None
+    geometry_loaded: bool = True
 
     def get_entity(self, global_id: str) -> EntityRecord | None:
         """Fetch entity by GlobalId."""
@@ -127,7 +129,12 @@ class ModelIndex:
         }
 
 
-def build_index(parsed: ParsedModel | dict[str, Any], scene: SceneModel | dict[str, Any]) -> ModelIndex:
+def build_index(
+    parsed: ParsedModel | dict[str, Any],
+    scene: SceneModel | dict[str, Any],
+    source_file: str | None = None,
+    geometry_loaded: bool = True,
+) -> ModelIndex:
     """Create the in-memory lookup index from parsed and scene model data."""
     parsed_model = _coerce_parsed_model(parsed)
     scene_model = _coerce_scene_model(scene)
@@ -182,6 +189,8 @@ def build_index(parsed: ParsedModel | dict[str, Any], scene: SceneModel | dict[s
         type_map=dict(type_map),
         connected=connected,
         duplicate_guids=parsed_model.duplicate_guids,
+        source_file=source_file,
+        geometry_loaded=geometry_loaded,
     )
 
 

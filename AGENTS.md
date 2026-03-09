@@ -10,8 +10,10 @@
 - 17 MCP tools across query/spatial/relationships/quantities/analysis/meta modules.
 - FastMCP server wiring for all tools.
 - Click CLI with `serve`, `info`, `lint`, and deterministic `diff` commands.
+- Fast-load mode is now the default (`extract_geometry=False` in pipeline), with opt-in eager geometry via `--with-geometry`.
+- On-demand single-element bounds extraction is available via `get_element_geometry_bounds` when eager geometry is not loaded.
 - Lint engine with configurable `.ifclintrc` and built-in rule set.
-- Test suite (`34` passing tests) covering parser/scene/index/tools/lint + edge-case synthetic models.
+- Test suite (`44` passing tests) covering parser/scene/index/tools/lint + edge-case synthetic models.
 - Raw IFC fixtures are consumed directly from `data/` (no duplicated copies in `sample_models/`).
 
 ## Why this structure
@@ -30,7 +32,8 @@
 ## Notes for future contributors
 
 - Keep parser output schema stable; many tool/lint functions assume these keys.
-- Geometry extraction uses `ifcopenshell.geom.iterator` for batch/parallel processing. Pass `extract_geometry=False` to `parse_ifc()` / `load_model_artifacts()` when geometry is not needed.
+- Geometry extraction is lazy by default in `load_model_artifacts()`. Use `extract_geometry=True` (or CLI `--with-geometry`) only for geometry-heavy workflows.
+- On-demand bounds use per-element tessellation with optimized settings (`disable-opening-subtractions`, `keep-bounding-boxes`) and cache results back into the active index.
 - Keep new tool functions pure (`index` in, JSON-serializable dict out).
 - Preserve deterministic behavior across parser/index/lint/diff (no non-deterministic ordering in outputs).
 - Keep README naming uppercase (`README.md`) for root and any future submodule docs.

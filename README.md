@@ -50,11 +50,17 @@ ifc-mcp serve --transport http --port 8000
 
 ## Typical workflow in chat
 
-1. `load_model(file_path="/absolute/path/to/model.ifc")`
+1. `load_model(file_path="/absolute/path/to/model.ifc")` (fast default)
 2. `get_model_summary()`
 3. Query with tools by element, space, material, property, or type.
 
 Most tools also accept optional `file_path` for one-shot queries.
+
+Geometry is loaded lazily by default for speed. Use eager mode only when needed:
+
+- MCP tool: `load_model(file_path="...", with_geometry=true)`
+- CLI preload: `ifc-mcp serve /absolute/path/to/model.ifc --with-geometry`
+- Session status: `get_loaded_model()` includes `geometry_loaded`
 
 ## License
 

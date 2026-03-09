@@ -17,12 +17,14 @@ from ifc_mcp.lint.engine import lint_ifc_model
 @click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", show_default=True)
 @click.option("--quiet", is_flag=True, help="Suppress progress output.")
 @click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
+@click.option("--with-geometry", is_flag=True, help="Enable eager geometry extraction (slower).")
 def lint_command(
     file_path: Path,
     config_path: Path | None,
     output_format: str,
     quiet: bool,
     verbose: bool,
+    with_geometry: bool,
 ) -> None:
     """Run lint checks for an IFC model."""
     if quiet and verbose:
@@ -33,6 +35,7 @@ def lint_command(
         str(file_path),
         str(config_path) if config_path else None,
         progress_callback=reporter.event if reporter.enabled else None,
+        extract_geometry=with_geometry,
     )
     reporter.done(label="lint")
 

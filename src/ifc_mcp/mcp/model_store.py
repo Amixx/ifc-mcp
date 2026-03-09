@@ -15,8 +15,9 @@ class ModelStore:
     """In-memory cache of loaded IFC models for one server process."""
 
     def __init__(self, progress_callback: ProgressCallback | None = None) -> None:
-        self._cache: dict[str, ModelIndex] = {}
+        self._cache: dict[tuple[str, bool], ModelIndex] = {}
         self._active_path: str | None = None
+        self._active_with_geometry: bool = False
         self._progress_callback = progress_callback
 
     @property
@@ -31,42 +32,69 @@ class ModelStore:
             raise FileNotFoundError(f"IFC file not found: {path}")
         return str(path)
 
-    def load(self, file_path: str) -> ModelIndex:
+    @property
+    def active_with_geometry(self) -> bool:
+        """Return whether the active model was loaded with eager geometry."""
+        return self._active_with_geometry
+
+    def load(self, file_path: str, with_geometry: bool = False) -> ModelIndex:
         """Load and activate model from file path (cached by absolute path)."""
         normalized = self.normalize_path(file_path)
-        if normalized not in self._cache:
-            _, _, index = load_model_artifacts(normalized, progress_callback=self._progress_callback)
-            self._cache[normalized] = index
+        cache_key = (normalized, with_geometry)
+        if cache_key not in self._cache:
+            _, _, index = load_model_artifacts(
+                normalized,
+                progress_callback=self._progress_callback,
+                extract_geometry=with_geometry,
+            )
+            self._cache[cache_key] = index
         self._active_path = normalized
-        return self._cache[normalized]
+        self._active_with_geometry = with_geometry
+        return self._cache[cache_key]
 
     def set_active_index(self, index: ModelIndex, label: str = "<in-memory>") -> None:
         """Set an already-built index as the active model."""
-        self._cache[label] = index
+        key = (label, getattr(index, "geometry_loaded", True))
+        self._cache[key] = index
         self._active_path = label
+        self._active_with_geometry = getattr(index, "geometry_loaded", True)
 
     def resolve(self, file_path: str | None = None) -> ModelIndex:
         """Resolve requested model index from explicit file path or active model."""
         if file_path:
-            return self.load(file_path)
+            return self.load(file_path, with_geometry=False)
         if self._active_path is None:
             raise ValueError(
                 "No IFC model loaded. Call load_model(file_path) first or pass file_path to a tool."
             )
-        return self._cache[self._active_path]
+        return self._cache[(self._active_path, self._active_with_geometry)]
 
     def unload_active(self) -> bool:
         """Unload currently active model from cache."""
         if self._active_path is None:
             return False
-        self._cache.pop(self._active_path, None)
+        self._cache.pop((self._active_path, self._active_with_geometry), None)
         self._active_path = None
+        self._active_with_geometry = False
         return True
+
+    def active_index(self) -> ModelIndex | None:
+        """Return active index if one is loaded."""
+        if self._active_path is None:
+            return None
+        return self._cache.get((self._active_path, self._active_with_geometry))
 
     def status(self) -> dict[str, object]:
         """Get status for loaded/cached model paths."""
+        cached_paths = sorted({path for path, _ in self._cache})
+        cached_variants = [
+            {"file_path": path, "with_geometry": with_geometry}
+            for path, with_geometry in sorted(self._cache.keys())
+        ]
         return {
             "loaded_model": self._active_path,
-            "cached_models": sorted(self._cache.keys()),
+            "geometry_loaded": self._active_with_geometry if self._active_path else False,
+            "cached_models": cached_paths,
+            "cached_variants": cached_variants,
             "cached_count": len(self._cache),
         }

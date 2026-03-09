@@ -16,9 +16,14 @@ def lint_ifc_model(
     file_path: str,
     config_path: str | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    extract_geometry: bool = False,
 ) -> dict[str, Any]:
     """Run active lint rules against an IFC model."""
-    _, _, index = load_model_artifacts(file_path, progress_callback=progress_callback)
+    _, _, index = load_model_artifacts(
+        file_path,
+        progress_callback=progress_callback,
+        extract_geometry=extract_geometry,
+    )
 
     config = load_lint_config(config_path)
     severities: dict[str, str] = config.get("rules", {})

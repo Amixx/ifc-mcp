@@ -13,9 +13,14 @@ from ifc_mcp.mcp.tools import analysis, meta, quantities, query, relationships, 
 def load_index(
     file_path: str,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    with_geometry: bool = False,
 ) -> ModelIndex:
     """Parse IFC file and build the in-memory model index."""
-    _, _, index = load_model_artifacts(file_path, progress_callback=progress_callback)
+    _, _, index = load_model_artifacts(
+        file_path,
+        progress_callback=progress_callback,
+        extract_geometry=with_geometry,
+    )
     return index
 
 
@@ -23,6 +28,7 @@ def create_mcp_server(
     index: ModelIndex | None = None,
     file_path: str | None = None,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    with_geometry: bool = False,
 ):
     """Create FastMCP server instance with all IFC tools registered."""
     try:
@@ -36,7 +42,7 @@ def create_mcp_server(
     if index is not None:
         store.set_active_index(index, label=file_path or "<in-memory>")
     elif file_path:
-        store.load(file_path)
+        store.load(file_path, with_geometry=with_geometry)
 
     def _resolve_index(request_file_path: str | None) -> tuple[ModelIndex | None, dict[str, Any] | None]:
         try:
@@ -48,12 +54,13 @@ def create_mcp_server(
             }
 
     @mcp.tool()
-    def load_model(file_path: str) -> dict[str, Any]:
+    def load_model(file_path: str, with_geometry: bool = False) -> dict[str, Any]:
         """Load or switch the active IFC model from an absolute file path for subsequent tool calls."""
         try:
-            index_obj = store.load(file_path)
+            index_obj = store.load(file_path, with_geometry=with_geometry)
             return {
                 "loaded_model": store.active_path,
+                "geometry_loaded": store.active_with_geometry,
                 "summary": meta.get_model_summary(index_obj),
                 "cached_models": store.status()["cached_models"],
             }
@@ -223,7 +230,11 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
-        return meta.get_element_geometry_bounds(index_obj, global_id)
+        active_path = store.active_path
+        effective_path = file_path or getattr(index_obj, "source_file", None)
+        if effective_path is None and active_path and active_path != "<in-memory>":
+            effective_path = active_path
+        return meta.get_element_geometry_bounds(index_obj, global_id, file_path=effective_path)
 
     return mcp
 
@@ -234,9 +245,14 @@ def run_server(
     port: int = 8000,
     host: str = "127.0.0.1",
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    with_geometry: bool = False,
 ) -> None:
     """Run the MCP server with stdio or HTTP transport."""
-    mcp = create_mcp_server(file_path=file_path, progress_callback=progress_callback)
+    mcp = create_mcp_server(
+        file_path=file_path,
+        progress_callback=progress_callback,
+        with_geometry=with_geometry,
+    )
 
     if transport == "stdio":
         if hasattr(mcp, "run"):

@@ -57,3 +57,13 @@ def test_pipeline_respects_extract_geometry_flag(residential_ifc):
     assert summary["metadata"]
     for entity in index.entities.values():
         assert entity.geometry_bounds is None
+
+
+def test_pipeline_default_is_no_geometry(residential_ifc):
+    """load_model_artifacts() defaults to fast mode without eager geometry extraction."""
+    _, _, index = load_model_artifacts(str(residential_ifc))
+    assert index.entities
+    assert index.geometry_loaded is False
+    assert index.source_file
+    for entity in index.entities.values():
+        assert entity.geometry_bounds is None

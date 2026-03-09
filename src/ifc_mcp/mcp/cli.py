@@ -16,7 +16,15 @@ from ifc_mcp.mcp.server import run_server
 @click.option("--port", type=int, default=8000, show_default=True)
 @click.option("--quiet", is_flag=True, help="Suppress progress output.")
 @click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
-def serve_command(file_path: Path | None, transport: str, port: int, quiet: bool, verbose: bool) -> None:
+@click.option("--with-geometry", is_flag=True, help="Enable eager geometry extraction for loaded models (slower).")
+def serve_command(
+    file_path: Path | None,
+    transport: str,
+    port: int,
+    quiet: bool,
+    verbose: bool,
+    with_geometry: bool,
+) -> None:
     """Run ifc-mcp server (optionally preloading one IFC model file)."""
     if quiet and verbose:
         raise click.UsageError("Cannot use --quiet and --verbose together.")
@@ -28,4 +36,5 @@ def serve_command(file_path: Path | None, transport: str, port: int, quiet: bool
         transport=transport,
         port=port,
         progress_callback=reporter.event if reporter.enabled else None,
+        with_geometry=with_geometry,
     )
