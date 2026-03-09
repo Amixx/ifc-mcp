@@ -56,14 +56,6 @@ ifc-mcp serve --transport http --port 8000
 
 Most tools also accept optional `file_path` for one-shot queries.
 
-## Plugin bundle
+## License
 
-Plugin assets are in `cowork-plugin/`.
-
-Create bundle:
-
-```bash
-./cowork-plugin/pack
-```
-
-This generates `ifc-mcp.plugin` at repo root.
+[MIT](LICENSE)

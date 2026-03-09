@@ -13,7 +13,6 @@
 - Lint engine with configurable `.ifclintrc` and built-in rule set.
 - Test suite (`34` passing tests) covering parser/scene/index/tools/lint + edge-case synthetic models.
 - Raw IFC fixtures are consumed directly from `data/` (no duplicated copies in `sample_models/`).
-- Cowork plugin assets are isolated under `cowork-plugin/` (manifest, MCP config, skills, commands, packaging script).
 
 ## Why this structure
 
