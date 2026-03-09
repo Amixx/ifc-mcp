@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-cd "$(dirname "$0")"
-zip -r ../ifc-mcp.plugin . -x "*.DS_Store" -x ".git/*" -x "node_modules/*" -x "__pycache__/*"
