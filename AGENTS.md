@@ -30,7 +30,7 @@
 ## Notes for future contributors
 
 - Keep parser output schema stable; many tool/lint functions assume these keys.
-- If adding geometry-heavy features, consider lazy/on-demand geometry extraction to avoid startup cost on large models.
+- Geometry extraction uses `ifcopenshell.geom.iterator` for batch/parallel processing. Pass `extract_geometry=False` to `parse_ifc()` / `load_model_artifacts()` when geometry is not needed.
 - Keep new tool functions pure (`index` in, JSON-serializable dict out).
 - Preserve deterministic behavior across parser/index/lint/diff (no non-deterministic ordering in outputs).
 - Keep README naming uppercase (`README.md`) for root and any future submodule docs.

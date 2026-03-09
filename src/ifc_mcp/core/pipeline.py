@@ -16,12 +16,13 @@ ProgressCallback = Callable[[dict[str, Any]], None]
 def load_model_artifacts(
     file_path: str,
     progress_callback: ProgressCallback | None = None,
+    extract_geometry: bool = True,
 ) -> tuple[ParsedModel, SceneModel, ModelIndex]:
     """Load one IFC file and build parsed, scene, and index artifacts."""
     started_at = time.monotonic()
     _emit(progress_callback, {"stage": "pipeline", "message": "Starting model pipeline", "file_path": file_path})
 
-    parsed = parse_ifc(file_path, progress_callback=progress_callback)
+    parsed = parse_ifc(file_path, progress_callback=progress_callback, extract_geometry=extract_geometry)
 
     scene_started_at = time.monotonic()
     _emit(progress_callback, {"stage": "scene", "message": "Building scene model", "file_path": file_path})

@@ -1,4 +1,4 @@
-.PHONY: test build check publish-test publish bump-patch clean
+.PHONY: test build check publish-test publish publish-local uvx-info bump-patch clean
 
 test:
 	PYTHONPATH=src pytest -q
@@ -19,6 +19,12 @@ s2=s[:m.start()] + f'version = \"{new}\"' + s[m.end():]; p.write_text(s2); print
 
 publish: bump-patch build check
 	python -m twine upload dist/*
+
+publish-local:
+	uv tool install --editable . --force
+
+uvx-info:
+	uvx --from . ifc-mcp info $(FILE)
 
 clean:
 	rm -rf build dist *.egg-info

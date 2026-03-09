@@ -18,6 +18,7 @@ from .types import ClassificationReference, EntityRecord, MaterialComponent, Par
 def parse_ifc(
     filepath: str,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    extract_geometry: bool = True,
 ) -> ParsedModel:
     """Parse an IFC file into normalized metadata, entities, and relationships."""
     started_at = time.monotonic()
@@ -58,6 +59,12 @@ def parse_ifc(
     duplicate_guids: list[str] = []
 
     candidates = _iter_entity_candidates(ifc)
+
+    if extract_geometry:
+        bounds_map = _batch_extract_geometry_bounds(ifc, candidates, progress_callback, started_at)
+    else:
+        bounds_map: dict[str, dict[str, list[float]]] = {}
+
     total_candidates = len(candidates)
     _emit_progress(
         progress_callback,
@@ -94,7 +101,7 @@ def parse_ifc(
             groups=group_map.get(guid, []),
             materials=material_map.get(guid, []),
             classifications=classification_map.get(guid, []),
-            geometry_bounds=_extract_geometry_bounds(element),
+            geometry_bounds=bounds_map.get(guid),
         )
 
         if idx % report_every == 0 or idx == total_candidates:
@@ -146,9 +153,9 @@ def parse_ifc(
     return parsed
 
 
-def parse(filepath: str) -> dict[str, Any]:
+def parse(filepath: str, extract_geometry: bool = True) -> dict[str, Any]:
     """Back-compat parser function returning a plain dict."""
-    parsed = parse_ifc(filepath)
+    parsed = parse_ifc(filepath, extract_geometry=extract_geometry)
     return {
         "metadata": parsed.metadata,
         "entities": {guid: _entity_to_dict(entity) for guid, entity in parsed.entities.items()},
@@ -617,34 +624,72 @@ def _extract_owner_history(element) -> dict[str, Any] | None:
     return result
 
 
-def _extract_geometry_bounds(element) -> dict[str, list[float]] | None:
-    """Extract geometry bounds if available; fallback to placement point bounds."""
-    placement = _extract_placement(element)
+def _batch_extract_geometry_bounds(
+    ifc,
+    candidates: list[Any],
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    started_at: float,
+) -> dict[str, dict[str, list[float]]]:
+    """Batch-extract geometry bounds for all entities using parallel iterator."""
+    bounds_map: dict[str, dict[str, list[float]]] = {}
 
     try:
+        import multiprocessing  # pylint: disable=import-outside-toplevel
         import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
 
-        if getattr(element, "Representation", None) is not None:
-            settings = ifcopenshell.geom.settings()
-            settings.set(settings.USE_WORLD_COORDS, True)
-            shape = ifcopenshell.geom.create_shape(settings, element)
-            vertices = list(getattr(shape.geometry, "verts", []) or [])
-            if vertices:
-                xs = vertices[0::3]
-                ys = vertices[1::3]
-                zs = vertices[2::3]
-                return {
-                    "min": [min(xs), min(ys), min(zs)],
-                    "max": [max(xs), max(ys), max(zs)],
-                }
+        settings = ifcopenshell.geom.settings()
+        settings.set(settings.USE_WORLD_COORDS, True)
+
+        _emit_progress(
+            progress_callback,
+            {
+                "stage": "geometry",
+                "message": "Batch-extracting geometry bounds",
+                "elapsed_seconds": round(time.monotonic() - started_at, 2),
+            },
+        )
+
+        iterator = ifcopenshell.geom.iterator(settings, ifc, multiprocessing.cpu_count())
+        if iterator.initialize():
+            processed = 0
+            while True:
+                shape = iterator.get()
+                guid = shape.guid
+                vertices = list(getattr(shape.geometry, "verts", []) or [])
+                if vertices:
+                    xs = vertices[0::3]
+                    ys = vertices[1::3]
+                    zs = vertices[2::3]
+                    bounds_map[guid] = {
+                        "min": [min(xs), min(ys), min(zs)],
+                        "max": [max(xs), max(ys), max(zs)],
+                    }
+                processed += 1
+                if not iterator.next():
+                    break
+
+        _emit_progress(
+            progress_callback,
+            {
+                "stage": "geometry",
+                "message": f"Geometry extracted for {len(bounds_map)} elements",
+                "elapsed_seconds": round(time.monotonic() - started_at, 2),
+            },
+        )
     except Exception:
         pass
 
-    if placement:
-        x, y, z = placement[0][3], placement[1][3], placement[2][3]
-        return {"min": [x, y, z], "max": [x, y, z]}
+    # Fallback: placement-based bounds for entities without geometry
+    for element in candidates:
+        guid = getattr(element, "GlobalId", None)
+        if not guid or guid in bounds_map:
+            continue
+        placement = _extract_placement(element)
+        if placement:
+            x, y, z = placement[0][3], placement[1][3], placement[2][3]
+            bounds_map[guid] = {"min": [x, y, z], "max": [x, y, z]}
 
-    return None
+    return bounds_map
 
 
 def _strip_revit_trailing_id(name: str | None) -> str | None:
