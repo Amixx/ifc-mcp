@@ -27,3 +27,10 @@ def test_serve_uses_with_geometry_flag():
     result = runner.invoke(main, ["serve", "--help"])
     assert result.exit_code == 0
     assert "--with-geometry" in result.output
+
+
+def test_cli_exposes_version_flag():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--version"])
+    assert result.exit_code == 0
+    assert "ifc-mcp" in result.output

@@ -13,6 +13,7 @@ pip install ifc-mcp
 ```bash
 which ifc-mcp
 ifc-mcp --help
+ifc-mcp --version
 ```
 
 ## Run

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import platform
 from typing import Any, Callable
 
+from ifc_mcp import __version__
 from ifc_mcp.core.index import ModelIndex
 from ifc_mcp.core.pipeline import load_model_artifacts
 from ifc_mcp.mcp.model_store import ModelStore
@@ -61,6 +63,7 @@ def create_mcp_server(
             return {
                 "loaded_model": store.active_path,
                 "geometry_loaded": store.active_with_geometry,
+                "server_version": __version__,
                 "summary": meta.get_model_summary(index_obj),
                 "cached_models": store.status()["cached_models"],
             }
@@ -70,7 +73,20 @@ def create_mcp_server(
     @mcp.tool()
     def get_loaded_model() -> dict[str, Any]:
         """Get currently loaded IFC model path and cached model list for this server session."""
-        return store.status()
+        status = store.status()
+        status["server_version"] = __version__
+        return status
+
+    @mcp.tool()
+    def get_server_info() -> dict[str, Any]:
+        """Get MCP server version/runtime info for debugging plugin resolution issues."""
+        return {
+            "name": "ifc-mcp",
+            "version": __version__,
+            "python_version": platform.python_version(),
+            "loaded_model": store.active_path,
+            "geometry_loaded": store.active_with_geometry,
+        }
 
     @mcp.tool()
     def unload_model() -> dict[str, Any]:
