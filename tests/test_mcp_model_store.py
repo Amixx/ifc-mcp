@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+import ifc_mcp.mcp.model_store as model_store
 from ifc_mcp.mcp.model_store import ModelStore
 
 
@@ -41,3 +44,17 @@ def test_model_store_rejects_missing_file():
     store = ModelStore()
     with pytest.raises(FileNotFoundError):
         store.load("/tmp/does-not-exist.ifc")
+
+
+def test_model_store_auto_reload_last_path(residential_ifc, monkeypatch):
+    monkeypatch.setattr(model_store, "_LAST_LOADED_PATH", None)
+    monkeypatch.setattr(model_store, "_LAST_LOADED_WITH_GEOMETRY", False)
+
+    store_a = ModelStore()
+    store_a.load(str(residential_ifc))
+
+    store_b = ModelStore()
+    resolved = store_b.resolve()
+
+    assert resolved is not None
+    assert store_b.active_path == str(Path(residential_ifc).resolve())

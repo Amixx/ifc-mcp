@@ -8,6 +8,9 @@ from typing import Any, Callable
 from ifc_mcp.core.index import ModelIndex
 from ifc_mcp.core.pipeline import load_model_artifacts
 
+_LAST_LOADED_PATH: str | None = None
+_LAST_LOADED_WITH_GEOMETRY: bool = False
+
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 
@@ -39,6 +42,7 @@ class ModelStore:
 
     def load(self, file_path: str, with_geometry: bool = False) -> ModelIndex:
         """Load and activate model from file path (cached by absolute path)."""
+        global _LAST_LOADED_PATH, _LAST_LOADED_WITH_GEOMETRY
         normalized = self.normalize_path(file_path)
         cache_key = (normalized, with_geometry)
         if cache_key not in self._cache:
@@ -50,6 +54,8 @@ class ModelStore:
             self._cache[cache_key] = index
         self._active_path = normalized
         self._active_with_geometry = with_geometry
+        _LAST_LOADED_PATH = normalized
+        _LAST_LOADED_WITH_GEOMETRY = with_geometry
         return self._cache[cache_key]
 
     def set_active_index(self, index: ModelIndex, label: str = "<in-memory>") -> None:
@@ -64,10 +70,21 @@ class ModelStore:
         if file_path:
             return self.load(file_path, with_geometry=False)
         if self._active_path is None:
+            if _LAST_LOADED_PATH is not None:
+                return self.load(_LAST_LOADED_PATH, with_geometry=_LAST_LOADED_WITH_GEOMETRY)
             raise ValueError(
                 "No IFC model loaded. Call load_model(file_path) first or pass file_path to a tool."
             )
-        return self._cache[(self._active_path, self._active_with_geometry)]
+        cache_key = (self._active_path, self._active_with_geometry)
+        if cache_key not in self._cache:
+            if self._active_path != "<in-memory>":
+                return self.load(self._active_path, with_geometry=self._active_with_geometry)
+            if _LAST_LOADED_PATH is not None:
+                return self.load(_LAST_LOADED_PATH, with_geometry=_LAST_LOADED_WITH_GEOMETRY)
+            raise ValueError(
+                "No IFC model loaded. Call load_model(file_path) first or pass file_path to a tool."
+            )
+        return self._cache[cache_key]
 
     def unload_active(self) -> bool:
         """Unload currently active model from cache."""
