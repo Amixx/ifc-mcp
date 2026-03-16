@@ -119,6 +119,32 @@ def create_mcp_server(
         return query.search_elements(index_obj, ifc_class=ifc_class, name=name, floor=floor, material=material)
 
     @mcp.tool()
+    def audit_property_coverage(
+        property_names: list[str] | None = None,
+        requirements: list[dict[str, Any]] | None = None,
+        ifc_class: str | None = None,
+        name: str | None = None,
+        floor: str | None = None,
+        material: str | None = None,
+        max_examples: int = 20,
+        file_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Check all matched elements for presence of required properties or aliases."""
+        index_obj, err = _resolve_index(file_path)
+        if err:
+            return err
+        return query.audit_property_coverage(
+            index_obj,
+            property_names=property_names,
+            requirements=requirements,
+            ifc_class=ifc_class,
+            name=name,
+            floor=floor,
+            material=material,
+            max_examples=max_examples,
+        )
+
+    @mcp.tool()
     def get_element_properties(global_id: str, file_path: str | None = None) -> dict[str, Any]:
         """Get all property sets for one element; optionally resolve from file_path."""
         index_obj, err = _resolve_index(file_path)
