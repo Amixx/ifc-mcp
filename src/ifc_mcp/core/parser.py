@@ -31,13 +31,24 @@ def parse_ifc(
         progress_callback,
         {
             "stage": "open",
-            "message": "Opening IFC file",
+            "message": "Reading IFC file from disk",
             "file_path": filepath,
             "file_size_bytes": file_size_bytes,
             "elapsed_seconds": 0.0,
         },
     )
     ifc = ifcopenshell.open(filepath)
+
+    _emit_progress(
+        progress_callback,
+        {
+            "stage": "open",
+            "message": "IFC file loaded",
+            "file_path": filepath,
+            "file_size_bytes": file_size_bytes,
+            "elapsed_seconds": round(time.monotonic() - started_at, 2),
+        },
+    )
 
     _emit_progress(
         progress_callback,
@@ -73,12 +84,15 @@ def parse_ifc(
             "message": "Extracting entities",
             "processed": 0,
             "total": total_candidates,
+            "percent": 0,
             "elapsed_seconds": round(time.monotonic() - started_at, 2),
             "eta_seconds": None,
         },
     )
 
-    report_every = max(1, total_candidates // 10) if total_candidates else 1
+    last_reported_percent = 0
+    last_progress_time = time.monotonic()
+    progress_interval = 2.0  # emit progress at least every 2 seconds
     for idx, element in enumerate(candidates, start=1):
         guid = getattr(element, "GlobalId", None)
         if not guid:
@@ -104,11 +118,38 @@ def parse_ifc(
             geometry_bounds=bounds_map.get(guid),
         )
 
-        if idx % report_every == 0 or idx == total_candidates:
-            elapsed = time.monotonic() - started_at
-            per_item = elapsed / idx if idx else 0.0
-            remaining = max(total_candidates - idx, 0)
-            eta_seconds = round(per_item * remaining, 2)
+        if total_candidates <= 0:
+            continue
+        current_percent = int((idx * 100) / total_candidates)
+        now = time.monotonic()
+        time_elapsed_since_report = now - last_progress_time
+        crossed_percent = current_percent > last_reported_percent
+        is_last = idx == total_candidates
+        # Emit on percent boundary, or every 2s for sub-percent progress
+        if not crossed_percent and not is_last and time_elapsed_since_report < progress_interval:
+            continue
+        elapsed = now - started_at
+        per_item = elapsed / idx if idx else 0.0
+        remaining = max(total_candidates - idx, 0)
+        eta_seconds = round(per_item * remaining, 2)
+        fractional_percent = round((idx * 100) / total_candidates, 1)
+        if crossed_percent:
+            for percent in range(last_reported_percent + 1, min(100, current_percent) + 1):
+                _emit_progress(
+                    progress_callback,
+                    {
+                        "stage": "entities",
+                        "message": "Extracting entities",
+                        "processed": idx,
+                        "total": total_candidates,
+                        "percent": percent,
+                        "elapsed_seconds": round(elapsed, 2),
+                        "eta_seconds": eta_seconds,
+                    },
+                )
+            last_reported_percent = min(100, current_percent)
+        else:
+            # Sub-percent time-based update
             _emit_progress(
                 progress_callback,
                 {
@@ -116,10 +157,12 @@ def parse_ifc(
                     "message": "Extracting entities",
                     "processed": idx,
                     "total": total_candidates,
+                    "percent": fractional_percent,
                     "elapsed_seconds": round(elapsed, 2),
                     "eta_seconds": eta_seconds,
                 },
             )
+        last_progress_time = now
 
     relationships: dict[str, Any] = {
         "voids": voids,
@@ -147,6 +190,7 @@ def parse_ifc(
             "message": "Parsing complete",
             "entities": len(parsed.entities),
             "duplicates": len(parsed.duplicate_guids),
+            "percent": 100,
             "elapsed_seconds": round(time.monotonic() - started_at, 2),
         },
     )
