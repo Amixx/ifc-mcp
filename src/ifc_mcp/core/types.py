@@ -31,6 +31,7 @@ class EntityRecord:
     """Normalized IFC entity data keyed by GlobalId."""
 
     global_id: str
+    express_id: int | None
     ifc_class: str
     name: str | None
     attributes: JSONDict = field(default_factory=dict)

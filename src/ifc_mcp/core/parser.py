@@ -103,6 +103,7 @@ def parse_ifc(
 
         entities[guid] = EntityRecord(
             global_id=guid,
+            express_id=element.id(),
             ifc_class=element.is_a(),
             name=getattr(element, "Name", None),
             attributes=_extract_attributes(element),

@@ -52,6 +52,7 @@ class ModelIndex:
 
         return {
             "global_id": entity.global_id,
+            "express_id": entity.express_id,
             "ifc_class": entity.ifc_class,
             "name": entity.name,
             "attributes": entity.attributes,
@@ -99,6 +100,7 @@ class ModelIndex:
         scene = self.scene_elements.get(global_id)
         return {
             "global_id": entity.global_id,
+            "express_id": entity.express_id,
             "ifc_class": entity.ifc_class,
             "name": entity.name,
             "floor": scene.floor if scene else None,
