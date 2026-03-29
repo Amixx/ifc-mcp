@@ -69,10 +69,13 @@ def get_material_summary(index: ModelIndex) -> dict[str, Any]:
             "element_types": set(),
         }
     )
+    covered_element_count = 0
+    total_element_count = len(index.by_guid)
 
     for entity in index.by_guid.values():
         if not entity.materials:
             continue
+        covered_element_count += 1
 
         area = _quantity(entity, _AREA_KEYS) or 0.0
         volume = _quantity(entity, _VOLUME_KEYS) or _bbox_volume(entity) or 0.0
@@ -97,7 +100,14 @@ def get_material_summary(index: ModelIndex) -> dict[str, Any]:
         )
 
     materials.sort(key=lambda item: item["material"])
-    return {"count": len(materials), "materials": materials}
+    coverage = (covered_element_count / total_element_count) if total_element_count else 0.0
+    return {
+        "count": len(materials),
+        "covered_element_count": covered_element_count,
+        "total_element_count": total_element_count,
+        "coverage": round(coverage, 6),
+        "materials": materials,
+    }
 
 
 def get_space_summary(index: ModelIndex, floor: str | None = None) -> dict[str, Any]:

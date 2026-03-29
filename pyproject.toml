@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ifc-mcp"
-version = "0.1.5"
+version = "0.1.6"
 description = "MCP server for querying IFC building model files"
 readme = "README.md"
 license = "MIT"
