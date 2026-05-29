@@ -53,6 +53,7 @@ def synthetic_index_factory():
 
         storey = EntityRecord(
             global_id="STOREY1",
+            express_id=1,
             ifc_class="IfcBuildingStorey",
             name="Level 1",
             property_sets={},
@@ -60,6 +61,7 @@ def synthetic_index_factory():
 
         space = EntityRecord(
             global_id="SPACE1",
+            express_id=2,
             ifc_class="IfcSpace",
             name="Room 101",
             property_sets={"Qto_SpaceBaseQuantities": {"NetArea": 12.5}},
@@ -67,6 +69,7 @@ def synthetic_index_factory():
 
         wall = EntityRecord(
             global_id="WALL1",
+            express_id=3,
             ifc_class="IfcWall",
             name="Test Wall",
             property_sets={"Pset_WallCommon": {"IsExternal": True}},

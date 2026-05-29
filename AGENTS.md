@@ -7,7 +7,7 @@
 - IFC core parser (`parse_ifc`) with metadata, entities, relationships, materials, classifications, owner history, and geometry bounds extraction.
 - Scene model builder (`build_scene_model`) with hosting chains, spatial hierarchy, wall orientation, exterior/interior classification, and human-readable labels.
 - In-memory `ModelIndex` with fast lookup maps (`by_guid`, `by_type`, `by_floor`, `by_material`, `by_space`, `type_map`, `spatial_tree`).
-- 17 MCP tools across query/spatial/relationships/quantities/analysis/meta modules.
+- 20 MCP tools across query/spatial/relationships/quantities/analysis/meta modules.
 - FastMCP server wiring for all tools.
 - Click CLI with `serve`, `info`, `lint`, and deterministic `diff` commands.
 - Fast-load mode is now the default (`extract_geometry=False` in pipeline), with opt-in eager geometry via `--with-geometry`.
@@ -20,6 +20,7 @@
 
 - `core/` is MCP-agnostic so it can be extracted into shared libraries later.
 - `tools/` depend only on `ModelIndex`, keeping server transport concerns out of domain logic.
+- `core/relationships.py` contains cached element containment and aggregate helper maps shared by relationship tools.
 - Lint rules are isolated pure functions, making severity policy configurable in one place (`lint/config.py`).
 
 ## Domain insights captured in code

@@ -21,6 +21,20 @@ def parse_ifc(
     extract_geometry: bool = True,
 ) -> ParsedModel:
     """Parse an IFC file into normalized metadata, entities, and relationships."""
+    parsed, _ = parse_ifc_with_model(
+        filepath,
+        progress_callback=progress_callback,
+        extract_geometry=extract_geometry,
+    )
+    return parsed
+
+
+def parse_ifc_with_model(
+    filepath: str,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    extract_geometry: bool = True,
+) -> tuple[ParsedModel, Any]:
+    """Parse an IFC file and return the opened IfcOpenShell model for reuse."""
     started_at = time.monotonic()
     file_size_bytes = None
     try:
@@ -195,7 +209,7 @@ def parse_ifc(
             "elapsed_seconds": round(time.monotonic() - started_at, 2),
         },
     )
-    return parsed
+    return parsed, ifc
 
 
 def parse(filepath: str, extract_geometry: bool = True) -> dict[str, Any]:

@@ -6,7 +6,7 @@ import time
 from typing import Any, Callable
 
 from ifc_mcp.core.index import ModelIndex, build_index
-from ifc_mcp.core.parser import parse_ifc
+from ifc_mcp.core.parser import parse_ifc_with_model
 from ifc_mcp.core.scene import build_scene_model
 from ifc_mcp.core.types import ParsedModel, SceneModel
 
@@ -19,10 +19,28 @@ def load_model_artifacts(
     extract_geometry: bool = False,
 ) -> tuple[ParsedModel, SceneModel, ModelIndex]:
     """Load one IFC file and build parsed, scene, and index artifacts."""
+    parsed, scene, index, _ = load_model_artifacts_with_ifc(
+        file_path,
+        progress_callback=progress_callback,
+        extract_geometry=extract_geometry,
+    )
+    return parsed, scene, index
+
+
+def load_model_artifacts_with_ifc(
+    file_path: str,
+    progress_callback: ProgressCallback | None = None,
+    extract_geometry: bool = False,
+) -> tuple[ParsedModel, SceneModel, ModelIndex, Any]:
+    """Load one IFC file and return artifacts plus the opened IfcOpenShell model."""
     started_at = time.monotonic()
     _emit(progress_callback, {"stage": "pipeline", "message": "Starting model pipeline", "file_path": file_path})
 
-    parsed = parse_ifc(file_path, progress_callback=progress_callback, extract_geometry=extract_geometry)
+    parsed, ifc = parse_ifc_with_model(
+        file_path,
+        progress_callback=progress_callback,
+        extract_geometry=extract_geometry,
+    )
 
     scene_started_at = time.monotonic()
     _emit(progress_callback, {"stage": "scene", "message": "Building scene model", "file_path": file_path})
@@ -65,7 +83,7 @@ def load_model_artifacts(
             "entities": len(parsed.entities),
         },
     )
-    return parsed, scene, index
+    return parsed, scene, index, ifc
 
 
 def _emit(callback: ProgressCallback | None, event: dict[str, Any]) -> None:

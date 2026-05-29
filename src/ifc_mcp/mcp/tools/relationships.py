@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
-from ifc_mcp.core.index import ModelIndex
+from ifc_mcp.core.index import ModelIndex, SPATIAL_CLASSES
+from ifc_mcp.core.relationships import (
+    build_aggregate_map,
+    build_storey_containment_map,
+    has_direct_geometry,
+)
 
 
 def get_connected_elements(index: ModelIndex, global_id: str) -> dict[str, Any]:
@@ -94,3 +99,177 @@ def get_element_material(index: ModelIndex, global_id: str) -> dict[str, Any]:
             for material in entity.materials
         ],
     }
+
+
+def classify_elements_by_relation(
+    index: ModelIndex,
+    exclude_classes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Classify IfcElement records as parent, child, or investigate.
+
+    Returns {"summary": {...}, "elements": [...]} with relation category,
+    parent GlobalId, spatial container metadata, and direct-geometry flag
+    from IfcRelContainedInSpatialStructure and IfcRelAggregates.
+    Based on parent-child element taxonomy by Kaspars Krauze, 2026.
+    """
+    excluded = set(exclude_classes or [])
+    storey_contained_guids, spatial_info_by_guid = build_storey_containment_map(index)
+    child_to_parent = build_aggregate_map(index)
+
+    elements: list[dict[str, Any]] = []
+    excluded_count = 0
+    category_counts: Counter[str] = Counter()
+
+    for entity in sorted(_iter_ifc_elements(index), key=_entity_sort_key):
+        if entity.ifc_class in excluded:
+            excluded_count += 1
+            continue
+
+        is_storey_contained = entity.global_id in storey_contained_guids
+        is_aggregate_child = entity.global_id in child_to_parent
+        if is_storey_contained:
+            category = "parent"
+        elif is_aggregate_child:
+            category = "child"
+        else:
+            category = "investigate"
+
+        category_counts[category] += 1
+        spatial_info = spatial_info_by_guid.get(entity.global_id) or {}
+        elements.append(
+            {
+                "global_id": entity.global_id,
+                "ifc_class": entity.ifc_class,
+                "name": entity.name,
+                "relation_category": category,
+                "parent_global_id": child_to_parent.get(entity.global_id),
+                "is_contained_in_building_storey": is_storey_contained,
+                "is_aggregate_child": is_aggregate_child,
+                "has_direct_geometry": has_direct_geometry(entity),
+                "spatial_container_class": spatial_info.get("ifc_class"),
+                "spatial_container_guid": spatial_info.get("global_id"),
+                "spatial_container_name": spatial_info.get("name"),
+            }
+        )
+
+    return {
+        "summary": {
+            "total_elements": len(elements),
+            "parent_count": category_counts["parent"],
+            "child_count": category_counts["child"],
+            "investigate_count": category_counts["investigate"],
+            "excluded_count": excluded_count,
+        },
+        "elements": elements,
+    }
+
+
+def get_aggregate_relationships(index: ModelIndex) -> dict[str, Any]:
+    """Return aggregate parent/child relationships for fast lookup.
+
+    Returns {"parents": {...}, "child_to_parent": {...}, "stats": {...}}
+    with grouped child records and a flat child-to-parent map.
+    Based on parent-child element taxonomy by Kaspars Krauze, 2026.
+    """
+    child_to_parent = build_aggregate_map(index)
+    children_by_parent: dict[str, list[str]] = defaultdict(list)
+    for child_guid, parent_guid in child_to_parent.items():
+        children_by_parent[parent_guid].append(child_guid)
+
+    parents: dict[str, dict[str, Any]] = {}
+    for parent_guid in sorted(children_by_parent):
+        parent = index.get_entity(parent_guid)
+        children = [
+            {
+                "global_id": child.global_id,
+                "ifc_class": child.ifc_class,
+                "name": child.name,
+            }
+            for child_guid in sorted(children_by_parent[parent_guid])
+            if (child := index.get_entity(child_guid)) is not None
+        ]
+        parents[parent_guid] = {
+            "ifc_class": parent.ifc_class if parent else None,
+            "name": parent.name if parent else None,
+            "children": children,
+        }
+
+    return {
+        "parents": parents,
+        "child_to_parent": dict(sorted(child_to_parent.items())),
+        "stats": {
+            "parent_count": len(parents),
+            "child_count": len(child_to_parent),
+        },
+    }
+
+
+def find_orphans(
+    index: ModelIndex,
+    exclude_classes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Find IfcElement records without spatial containment or aggregate parent.
+
+    Returns {"orphans": [...], "stats": {...}} with orphan records,
+    diagnostics, direct-geometry flags, and count statistics by IFC class.
+    Based on parent-child element taxonomy by Kaspars Krauze, 2026.
+    """
+    excluded = set(exclude_classes or [])
+    storey_contained_guids, _ = build_storey_containment_map(index)
+    child_to_parent = build_aggregate_map(index)
+    aggregate_parent_guids = set(child_to_parent.values())
+
+    orphans: list[dict[str, Any]] = []
+    by_class: Counter[str] = Counter()
+
+    for entity in sorted(_iter_ifc_elements(index), key=_entity_sort_key):
+        if entity.ifc_class in excluded:
+            continue
+        if entity.global_id in storey_contained_guids or entity.global_id in child_to_parent:
+            continue
+
+        diagnostic = (
+            "aggregate_orphan_no_storey"
+            if entity.global_id in aggregate_parent_guids
+            else "no_storey_no_aggregate"
+        )
+        by_class[entity.ifc_class] += 1
+        orphans.append(
+            {
+                "global_id": entity.global_id,
+                "ifc_class": entity.ifc_class,
+                "name": entity.name,
+                "has_direct_geometry": has_direct_geometry(entity),
+                "diagnostic": diagnostic,
+            }
+        )
+
+    return {
+        "orphans": orphans,
+        "stats": {
+            "count": len(orphans),
+            "by_class": dict(sorted(by_class.items())),
+        },
+    }
+
+
+def _entity_sort_key(entity: Any) -> tuple[str, str, str]:
+    return (entity.ifc_class or "", entity.name or "", entity.global_id)
+
+
+def _iter_ifc_elements(index: ModelIndex) -> list[Any]:
+    """Return indexed records that represent concrete IFC element occurrences."""
+    excluded_exact = SPATIAL_CLASSES | {
+        "IfcProject",
+        "IfcTypeObject",
+        "IfcGroup",
+        "IfcZone",
+        "IfcSpatialZone",
+    }
+    return [
+        entity
+        for entity in index.by_guid.values()
+        if entity.ifc_class not in excluded_exact
+        and not entity.ifc_class.startswith("IfcType")
+        and not entity.ifc_class.endswith("Type")
+    ]

@@ -193,6 +193,39 @@ def create_mcp_server(
         return relationships.get_element_material(index_obj, global_id)
 
     @mcp.tool()
+    def classify_elements_by_relation(
+        exclude_classes: list[str] | None = None,
+        file_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Classify IfcElement records using IfcRelContainedInSpatialStructure and IfcRelAggregates."""
+        index_obj, err = _resolve_index(file_path)
+        if err:
+            return err
+        return relationships.classify_elements_by_relation(
+            index_obj,
+            exclude_classes=exclude_classes,
+        )
+
+    @mcp.tool()
+    def get_aggregate_relationships(file_path: str | None = None) -> dict[str, Any]:
+        """Get IfcRelAggregates parent/child maps for active or provided file_path."""
+        index_obj, err = _resolve_index(file_path)
+        if err:
+            return err
+        return relationships.get_aggregate_relationships(index_obj)
+
+    @mcp.tool()
+    def find_orphans(
+        exclude_classes: list[str] | None = None,
+        file_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Find IfcElement records missing IfcRelContainedInSpatialStructure and IfcRelAggregates links."""
+        index_obj, err = _resolve_index(file_path)
+        if err:
+            return err
+        return relationships.find_orphans(index_obj, exclude_classes=exclude_classes)
+
+    @mcp.tool()
     def get_quantities(
         ifc_class: str | None = None,
         floor: str | None = None,

@@ -1,0 +1,21 @@
+{
+  "aggregate_stats": {
+    "child_count": 8,
+    "parent_count": 6
+  },
+  "classification_summary": {
+    "child_count": 2,
+    "excluded_count": 0,
+    "investigate_count": 6,
+    "parent_count": 7,
+    "total_elements": 15
+  },
+  "orphan_stats": {
+    "by_class": {
+      "IfcBuildingElementProxy": 4,
+      "IfcFurniture": 1,
+      "IfcRoof": 1
+    },
+    "count": 6
+  }
+}

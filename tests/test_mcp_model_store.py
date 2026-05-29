@@ -34,7 +34,9 @@ def test_model_store_can_load_geometry_variant(residential_ifc):
     assert status["cached_count"] >= 1
 
 
-def test_model_store_requires_loaded_model_when_no_path():
+def test_model_store_requires_loaded_model_when_no_path(monkeypatch):
+    monkeypatch.setattr(model_store, "_LAST_LOADED_PATH", None)
+    monkeypatch.setattr(model_store, "_LAST_LOADED_WITH_GEOMETRY", False)
     store = ModelStore()
     with pytest.raises(ValueError):
         store.resolve()

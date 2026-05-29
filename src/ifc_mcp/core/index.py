@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .types import EntityRecord, ParsedModel, SceneElement, SceneModel
@@ -31,6 +31,7 @@ class ModelIndex:
     duplicate_guids: list[str]
     source_file: str | None = None
     geometry_loaded: bool = True
+    relationship_cache: dict[str, Any] = field(default_factory=dict)
 
     def get_entity(self, global_id: str) -> EntityRecord | None:
         """Fetch entity by GlobalId."""

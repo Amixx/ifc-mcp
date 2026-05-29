@@ -63,6 +63,14 @@ Geometry is loaded lazily by default for speed. Use eager mode only when needed:
 - CLI preload: `ifc-mcp serve /absolute/path/to/model.ifc --with-geometry`
 - Session status: `get_loaded_model()` includes `geometry_loaded`
 
+## Relationship tools
+
+`ifc-mcp` includes element relationship tools based on `IfcRelContainedInSpatialStructure` and `IfcRelAggregates`:
+
+- `classify_elements_by_relation(file_path="/absolute/path/to/model.ifc")` returns parent, child, and investigate buckets for `IfcElement` records.
+- `get_aggregate_relationships(file_path="/absolute/path/to/model.ifc")` returns aggregate parents, their children, and a flat `child_to_parent` map.
+- `find_orphans(file_path="/absolute/path/to/model.ifc", exclude_classes=["IfcOpeningElement"])` returns elements with neither spatial containment nor aggregate parent links.
+
 ## License
 
 [MIT](LICENSE)
