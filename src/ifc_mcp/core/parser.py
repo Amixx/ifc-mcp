@@ -311,7 +311,7 @@ def _build_group_map(ifc) -> tuple[dict[str, list[str]], list[dict[str, Any]]]:
         group = rel.RelatingGroup
         group_guid = getattr(group, "GlobalId", None)
         group_name = _strip_revit_trailing_id(getattr(group, "Name", None))
-        related = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
+        related = [obj.GlobalId for obj in (rel.RelatedObjects or []) if hasattr(obj, "GlobalId")]
 
         if related:
             relationships.append(
@@ -343,7 +343,7 @@ def _build_type_relationships(ifc) -> tuple[dict[str, str], list[dict[str, Any]]
         if not type_guid:
             continue
 
-        related = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
+        related = [obj.GlobalId for obj in (rel.RelatedObjects or []) if hasattr(obj, "GlobalId")]
         if not related:
             continue
 
@@ -369,7 +369,7 @@ def _build_property_definition_relationships(ifc) -> list[dict[str, Any]]:
         pset = rel.RelatingPropertyDefinition
         pset_guid = getattr(pset, "GlobalId", None)
         pset_name = getattr(pset, "Name", None)
-        related = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
+        related = [obj.GlobalId for obj in (rel.RelatedObjects or []) if hasattr(obj, "GlobalId")]
         if related:
             relationships.append(
                 {
@@ -390,7 +390,7 @@ def _build_material_map(ifc) -> tuple[dict[str, list[MaterialComponent]], list[d
     for rel in ifc.by_type("IfcRelAssociatesMaterial"):
         relating_material = rel.RelatingMaterial
         components = _extract_material_components(relating_material)
-        related = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
+        related = [obj.GlobalId for obj in (rel.RelatedObjects or []) if hasattr(obj, "GlobalId")]
         if not related:
             continue
 
@@ -423,7 +423,7 @@ def _build_classification_map(
     for rel in ifc.by_type("IfcRelAssociatesClassification"):
         rc = rel.RelatingClassification
         cref = _extract_classification_reference(rc)
-        related = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
+        related = [obj.GlobalId for obj in (rel.RelatedObjects or []) if hasattr(obj, "GlobalId")]
         if not related:
             continue
 
