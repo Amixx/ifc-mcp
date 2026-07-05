@@ -26,7 +26,8 @@ def build_storey_containment_map(
         container_info = {
             "global_id": container_guid,
             "ifc_class": container.ifc_class if container else None,
-            "name": relation.get("container_name") or (container.name if container else None),
+            "name": relation.get("container_name")
+            or (container.name if container else None),
         }
         for child_guid in relation.get("element_guids", []):
             container_info_by_guid[child_guid] = container_info
@@ -36,6 +37,35 @@ def build_storey_containment_map(
     result = (contained_guids, container_info_by_guid)
     model.relationship_cache["storey_containment"] = result
     return result
+
+
+def resolve_storey_for_element(
+    model: ModelIndex, global_id: str
+) -> dict[str, Any] | None:
+    """Return the IfcBuildingStorey containing an element, resolving through decomposition.
+
+    Per IFC, an element decomposed into parts via ``IfcRelAggregates`` (e.g. a Revit layered
+    floor or roof exported as a parent slab plus child layer-parts) carries no direct
+    ``IfcRelContainedInSpatialStructure`` on the parts; the parts inherit the storey of their
+    whole. ``build_storey_containment_map`` only reports *direct* containment, so callers that
+    rely on it alone miss every decomposition part. This walks the aggregate chain upward from
+    ``global_id`` until a storey container is found.
+
+    Returns the container info dict (``global_id``/``ifc_class``/``name``) or ``None`` when the
+    element resolves to no storey (e.g. it is contained directly under ``IfcBuilding``/``IfcSite``,
+    or is a true orphan with neither containment nor an aggregate parent).
+    """
+    _, container_by_guid = build_storey_containment_map(model)
+    child_to_parent = build_aggregate_map(model)
+    seen: set[str] = set()
+    guid: str | None = global_id
+    while guid and guid not in seen:
+        seen.add(guid)
+        container = container_by_guid.get(guid)
+        if container and container.get("ifc_class") == "IfcBuildingStorey":
+            return container
+        guid = child_to_parent.get(guid)
+    return None
 
 
 def build_aggregate_map(model: ModelIndex) -> dict[str, str]:

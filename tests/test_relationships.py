@@ -12,6 +12,7 @@ from ifc_mcp.core.relationships import (
     build_aggregate_map,
     build_storey_containment_map,
     has_direct_geometry,
+    resolve_storey_for_element,
 )
 from ifc_mcp.core.types import EntityRecord, ParsedModel, SceneElement, SceneModel
 import ifc_mcp.mcp.model_store as model_store
@@ -33,6 +34,22 @@ def test_core_relationship_helpers(synthetic_relationship_index):
     assert has_direct_geometry(synthetic_relationship_index.by_guid["SLAB1"]) is True
 
 
+def test_resolve_storey_for_element(synthetic_relationship_index):
+    index = synthetic_relationship_index
+
+    # Directly contained element resolves to its storey.
+    direct = resolve_storey_for_element(index, "CURTAIN1")
+    assert direct is not None and direct["global_id"] == "STOREY1"
+
+    # Decomposition parts (no direct containment) inherit the storey of their whole.
+    for part in ("MULLION1", "MULLION2", "MULLION3"):
+        inherited = resolve_storey_for_element(index, part)
+        assert inherited is not None and inherited["global_id"] == "STOREY1"
+
+    # A true orphan (no containment, no aggregate parent) resolves to no storey.
+    assert resolve_storey_for_element(index, "SLAB1") is None
+
+
 def test_classify_elements_by_relation_synthetic(synthetic_relationship_index):
     result = relationships.classify_elements_by_relation(synthetic_relationship_index)
 
@@ -44,8 +61,7 @@ def test_classify_elements_by_relation_synthetic(synthetic_relationship_index):
         "excluded_count": 0,
     }
     categories = {
-        row["global_id"]: row["relation_category"]
-        for row in result["elements"]
+        row["global_id"]: row["relation_category"] for row in result["elements"]
     }
     assert categories["CURTAIN1"] == "parent"
     assert categories["MULLION1"] == "child"
@@ -59,7 +75,9 @@ def test_get_aggregate_relationships_synthetic(synthetic_relationship_index):
 
     assert result["stats"] == {"parent_count": 1, "child_count": 3}
     assert list(result["parents"]) == ["CURTAIN1"]
-    assert [child["global_id"] for child in result["parents"]["CURTAIN1"]["children"]] == [
+    assert [
+        child["global_id"] for child in result["parents"]["CURTAIN1"]["children"]
+    ] == [
         "MULLION1",
         "MULLION2",
         "MULLION3",
@@ -97,7 +115,12 @@ def test_relationship_tools_exclude_classes(synthetic_relationship_index):
 
 
 def test_relationship_tools_real_fixture_regression(model_index):
-    expected_path = Path(__file__).parent / "data" / "relationships" / "building_architecture.expected.json"
+    expected_path = (
+        Path(__file__).parent
+        / "data"
+        / "relationships"
+        / "building_architecture.expected.json"
+    )
     expected = json.loads(expected_path.read_text())
 
     classified = relationships.classify_elements_by_relation(model_index)
@@ -112,7 +135,9 @@ def test_relationship_tools_real_fixture_regression(model_index):
     assert actual == expected
 
 
-def test_model_store_file_path_resolution_and_missing_file(residential_ifc, monkeypatch):
+def test_model_store_file_path_resolution_and_missing_file(
+    residential_ifc, monkeypatch
+):
     monkeypatch.setattr(model_store, "_LAST_LOADED_PATH", None)
     monkeypatch.setattr(model_store, "_LAST_LOADED_WITH_GEOMETRY", False)
     store = ModelStore()
