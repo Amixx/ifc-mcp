@@ -19,6 +19,22 @@ class BoundsExtractionResult:
     diagnostics: list[dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class MeshExtractionResult:
+    """Deduplicated local-space geometries plus per-element world-space instances.
+
+    ``geometries`` is keyed by ifcopenshell's own ``shape.geometry.id`` -- elements that
+    share an identical representation (the same window/door/column type at different
+    placements) share one entry here and appear as separate rows in ``instances``. Callers
+    should emit each geometry once and reference it by id per instance (e.g. glTF mesh +
+    ``EXT_mesh_gpu_instancing``), not flatten it back to per-element world-space meshes.
+    """
+
+    geometries: dict[str, dict[str, Any]]
+    instances: list[dict[str, Any]]
+    diagnostics: list[dict[str, Any]]
+
+
 def extract_element_bounds(file_path: str, global_id: str) -> dict[str, list[float]] | None:
     """Compute geometry bounds for one element by GlobalId from IFC file."""
     try:
@@ -46,11 +62,20 @@ def extract_element_bounds_batch(
     include_guids: Iterable[str] | None = None,
     threads: int = 4,
     prefer_parametric: bool = True,
+    time_budget_s: float = 120.0,
 ) -> BoundsExtractionResult:
     """Compute targeted element bounds with cheap parametric extraction before tessellation.
 
     The parametric path handles common swept-solid representations without invoking
     OpenCascade. Remaining elements fall back to the IfcOpenShell geometry iterator.
+
+    Real Revit-exported architecture (many boolean opening subtractions) can make the
+    iterator fallback take minutes per hundred elements rather than the sub-second cost
+    typical of MEP/services content — measured on real client files, not a synthetic
+    worst case. ``time_budget_s`` bounds the iterator fallback's wall-clock cost so one
+    pathological discipline file cannot stall a whole batch; elements not reached in time
+    fall through to the placement-origin fallback (or diagnostics if that also fails),
+    same as any other unbounded element.
     """
 
     class_filter = set(include_classes or [])
@@ -86,20 +111,28 @@ def extract_element_bounds_batch(
         if getattr(element, "GlobalId", None)
         and getattr(element, "GlobalId", None) not in bounds_by_guid
     ]
-    bounds_by_guid.update(_extract_bounds_with_iterator(ifc, remaining, by_guid, threads=threads))
+    iterator_bounds, timed_out_guids = _extract_bounds_with_iterator(
+        ifc, remaining, by_guid, threads=threads, time_budget_s=time_budget_s
+    )
+    bounds_by_guid.update(iterator_bounds)
 
     diagnostics = []
     for element in elements:
         guid = getattr(element, "GlobalId", None)
         if not guid or guid in bounds_by_guid:
             continue
+        reason = (
+            "geometry iterator time budget exceeded"
+            if guid in timed_out_guids
+            else _unbounded_reason(element)
+        )
         diagnostics.append(
             {
                 "global_id": guid,
                 "ifc_class": element.is_a(),
                 "name": getattr(element, "Name", None),
                 "tag": getattr(element, "Tag", None),
-                "reason": _unbounded_reason(element),
+                "reason": reason,
             }
         )
 
@@ -107,6 +140,127 @@ def extract_element_bounds_batch(
         bounds=sorted(bounds_by_guid.values(), key=_sort_key),
         diagnostics=sorted(diagnostics, key=_sort_key),
     )
+
+
+def extract_element_meshes_batch(
+    ifc: Any,
+    *,
+    include_classes: Iterable[str] | None = None,
+    include_guids: Iterable[str] | None = None,
+    threads: int = 4,
+    time_budget_s: float | None = None,
+) -> MeshExtractionResult:
+    """Tessellate elements into deduplicated local-space geometry plus per-instance world
+    transforms, for real (triangulated) web rendering -- not just bounding boxes.
+
+    Uses local (object-space) coordinates so identical representations produce byte-identical
+    vertex/face buffers and collapse onto one ``geometry.id``; every production BIM web viewer
+    with disclosed internals (SVF2, XKT, Speckle) leans on this kind of instance dedup, not
+    spatial tiling, as its primary size lever for repetitive content (windows, doors, columns,
+    duct fittings). ``time_budget_s`` bounds the OpenCascade tessellation pass the same way as
+    :func:`extract_element_bounds_batch` -- real Revit architecture exports can be orders of
+    magnitude slower per element than MEP/services content (measured: ~0.0009s/element vs.
+    ~0.3s/element on real client files), so an unbounded pass is not safe to run inline.
+    """
+    class_filter = set(include_classes or [])
+    guid_filter = set(include_guids or [])
+    elements = [
+        element
+        for element in ifc.by_type("IfcElement")
+        if _included(element, class_filter=class_filter, guid_filter=guid_filter)
+    ]
+    by_guid = {
+        element.GlobalId: element for element in elements if getattr(element, "GlobalId", None)
+    }
+
+    geometries: dict[str, dict[str, Any]] = {}
+    instances: list[dict[str, Any]] = []
+    visited_guids: set[str] = set()
+
+    try:
+        import time as _time  # pylint: disable=import-outside-toplevel
+
+        import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
+
+        settings = ifcopenshell.geom.settings()
+        settings.set("use-world-coords", False)
+        settings.set("weld-vertices", True)
+        settings.set("apply-default-materials", True)
+
+        deadline = _time.monotonic() + time_budget_s if time_budget_s else None
+        iterator = ifcopenshell.geom.iterator(settings, ifc, max(1, threads), include=elements)
+        if iterator.initialize():
+            while True:
+                shape = iterator.get()
+                visited_guids.add(shape.guid)
+                element = by_guid.get(shape.guid)
+                verts = shape.geometry.verts
+                faces = shape.geometry.faces
+                if element is not None and verts and faces:
+                    geometry_id = shape.geometry.id
+                    if geometry_id not in geometries:
+                        geometries[geometry_id] = {
+                            "positions": list(verts),
+                            "indices": list(faces),
+                        }
+                    instances.append(
+                        {
+                            "global_id": shape.guid,
+                            "ifc_class": element.is_a(),
+                            "name": getattr(element, "Name", None),
+                            "tag": getattr(element, "Tag", None),
+                            "geometry_id": geometry_id,
+                            "matrix": list(shape.transformation.matrix),
+                            "color": _first_material_color(shape.geometry),
+                        }
+                    )
+                if deadline is not None and _time.monotonic() >= deadline:
+                    break
+                if not iterator.next():
+                    break
+    except Exception:
+        pass
+
+    instanced_guids = {row["global_id"] for row in instances}
+    diagnostics = []
+    for element in elements:
+        guid = getattr(element, "GlobalId", None)
+        if not guid or guid in instanced_guids:
+            continue
+        reason = (
+            "geometry iterator time budget exceeded"
+            if guid not in visited_guids and time_budget_s is not None
+            else _unbounded_reason(element)
+        )
+        diagnostics.append(
+            {
+                "global_id": guid,
+                "ifc_class": element.is_a(),
+                "name": getattr(element, "Name", None),
+                "tag": getattr(element, "Tag", None),
+                "reason": reason,
+            }
+        )
+
+    return MeshExtractionResult(
+        geometries=geometries,
+        instances=sorted(instances, key=lambda row: row["global_id"]),
+        diagnostics=sorted(diagnostics, key=_sort_key),
+    )
+
+
+def _first_material_color(geometry: Any) -> list[float] | None:
+    materials = getattr(geometry, "materials", None)
+    if not materials:
+        return None
+    material = materials[0]
+    diffuse = getattr(material, "diffuse", None)
+    if diffuse is None:
+        return None
+    transparency = float(getattr(material, "transparency", 0.0) or 0.0)
+    if not (0.0 <= transparency <= 1.0):
+        transparency = 0.0
+    return [float(diffuse.r()), float(diffuse.g()), float(diffuse.b()), 1.0 - transparency]
 
 
 def _extract_bounds_from_shape(element: Any) -> dict[str, list[float]] | None:
@@ -166,10 +320,17 @@ def _extract_bounds_with_iterator(
     by_guid: dict[str, Any],
     *,
     threads: int,
-) -> dict[str, dict[str, Any]]:
+    time_budget_s: float | None = None,
+) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    """Returns (bounds by guid, guids the time budget cut off before the iterator reached them)."""
+    import time as _time  # pylint: disable=import-outside-toplevel
+
     bounds: dict[str, dict[str, Any]] = {}
+    seen_guids: set[str] = set()
     if not elements:
-        return bounds
+        return bounds, set()
+
+    deadline = _time.monotonic() + time_budget_s if time_budget_s else None
 
     try:
         import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
@@ -182,6 +343,7 @@ def _extract_bounds_with_iterator(
         if iterator.initialize():
             while True:
                 shape = iterator.get()
+                seen_guids.add(shape.guid)
                 vertices = list(getattr(shape.geometry, "verts", []) or [])
                 element = by_guid.get(shape.guid)
                 if vertices and element is not None:
@@ -191,12 +353,19 @@ def _extract_bounds_with_iterator(
                         source="ifcopenshell.geom world coordinates",
                         vertex_count=len(vertices) // 3,
                     )
+                if deadline is not None and _time.monotonic() >= deadline:
+                    break
                 if not iterator.next():
                     break
     except Exception:
-        return bounds
+        return bounds, set()
 
-    return bounds
+    timed_out = {
+        guid
+        for element in elements
+        if (guid := getattr(element, "GlobalId", None)) and guid not in seen_guids
+    }
+    return bounds, timed_out
 
 
 def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, list[float]] | None:

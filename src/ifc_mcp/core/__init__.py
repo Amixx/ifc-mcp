@@ -1,6 +1,12 @@
 """Core IFC parsing, scene modeling, and indexing."""
 
-from .geometry import BoundsExtractionResult, extract_element_bounds, extract_element_bounds_batch
+from .geometry import (
+    BoundsExtractionResult,
+    MeshExtractionResult,
+    extract_element_bounds,
+    extract_element_bounds_batch,
+    extract_element_meshes_batch,
+)
 from .grids import get_grid_extents
 from .index import ModelIndex, build_index
 from .parser import parse_ifc, parse_ifc_with_model
@@ -16,7 +22,9 @@ __all__ = [
     "load_model_artifacts",
     "load_model_artifacts_with_ifc",
     "BoundsExtractionResult",
+    "MeshExtractionResult",
     "extract_element_bounds",
     "extract_element_bounds_batch",
+    "extract_element_meshes_batch",
     "get_grid_extents",
 ]
