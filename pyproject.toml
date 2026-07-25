@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ifc-mcp"
-version = "0.2.1"
+version = "0.2.2"
 description = "MCP server for querying IFC building model files"
 readme = "README.md"
 license = "MIT"
@@ -24,7 +24,14 @@ dependencies = [
     "ifcopenshell",
     "fastmcp>=2.0.0",
     "click>=8.0.0",
+    "numpy",
 ]
+
+[project.optional-dependencies]
+# Open3D has no wheels past cp312, unlike the rest of this package's >=3.10 promise -- kept
+# optional so importing ifc_mcp.core doesn't force that ceiling on every consumer, only ones
+# that actually call simplify_ifc.
+simplify = ["open3d>=0.18.0"]
 
 [project.scripts]
 ifc-mcp = "ifc_mcp.cli:main"

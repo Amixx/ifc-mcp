@@ -12,6 +12,7 @@ from .index import ModelIndex, build_index
 from .parser import parse_ifc, parse_ifc_with_model
 from .pipeline import load_model_artifacts, load_model_artifacts_with_ifc
 from .scene import build_scene_model
+from .simplify import SimplifyResult, needs_simplification, simplify_ifc
 
 __all__ = [
     "ModelIndex",
@@ -27,4 +28,7 @@ __all__ = [
     "extract_element_bounds_batch",
     "extract_element_meshes_batch",
     "get_grid_extents",
+    "SimplifyResult",
+    "needs_simplification",
+    "simplify_ifc",
 ]
