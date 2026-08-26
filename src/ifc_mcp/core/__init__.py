@@ -11,6 +11,12 @@ from .grids import get_grid_extents
 from .index import ModelIndex, build_index
 from .parser import parse_ifc, parse_ifc_with_model
 from .pipeline import load_model_artifacts, load_model_artifacts_with_ifc
+from .property_sets import (
+    PropertySetKind,
+    PropertySetOccurrence,
+    element_property_set_occurrences,
+    iter_property_set_occurrences,
+)
 from .scene import build_scene_model
 from .simplify import SimplifyResult, needs_simplification, simplify_ifc
 
@@ -28,6 +34,10 @@ __all__ = [
     "extract_element_bounds_batch",
     "extract_element_meshes_batch",
     "get_grid_extents",
+    "PropertySetKind",
+    "PropertySetOccurrence",
+    "element_property_set_occurrences",
+    "iter_property_set_occurrences",
     "SimplifyResult",
     "needs_simplification",
     "simplify_ifc",
