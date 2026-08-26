@@ -108,7 +108,7 @@ def test_mesh_batch_deflection_defaults_leave_ifcopenshell_settings_untouched() 
 
 
 def test_mesh_batch_coarse_deflection_reduces_triangles_without_dropping_elements() -> None:
-    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+    ifc = ifcopenshell.open("data/BasicHouse.ifc")
 
     fine = extract_element_meshes_batch(ifc, threads=1, linear_deflection=0.001)
     coarse = extract_element_meshes_batch(

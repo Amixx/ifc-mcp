@@ -26,6 +26,7 @@ class PropertySetOccurrence:
     kind: PropertySetKind
     inherited: bool
     property_names: tuple[str, ...]
+    populated_property_names: tuple[str, ...]
 
 
 def iter_property_set_occurrences(
@@ -113,14 +114,37 @@ def _to_occurrence(
     else:
         kind = "other"
         members = []
-    names = tuple(
-        str(member.Name) for member in members if getattr(member, "Name", None) is not None
-    )
+    named = [member for member in members if getattr(member, "Name", None) is not None]
     return PropertySetOccurrence(
         global_id=str(global_id),
         ifc_class=ifc_class,
         set_name=str(set_name),
         kind=kind,
         inherited=inherited,
-        property_names=names,
+        property_names=tuple(str(member.Name) for member in named),
+        populated_property_names=tuple(
+            str(member.Name) for member in named if _has_value(member)
+        ),
     )
+
+
+def _has_value(member: Any) -> bool:
+    """Report whether a property or quantity carries a non-empty value.
+
+    A property declared by an export mapping but left blank is structurally
+    present and materially missing; callers usually need to tell those apart.
+    """
+    for index, attribute in enumerate(member.wrapped_data.get_attribute_names()):
+        if attribute in ("Name", "Description", "Unit", "Formula"):
+            continue
+        value = member[index]
+        if hasattr(value, "wrappedValue"):
+            value = value.wrappedValue
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        if isinstance(value, (list, tuple)) and not value:
+            continue
+        return True
+    return False

@@ -98,6 +98,61 @@ def test_iter_property_set_occurrences_respects_entity_type_filter() -> None:
     assert {occurrence.ifc_class for occurrence in occurrences} == {"IfcCovering"}
 
 
+def test_populated_property_names_excludes_blank_values() -> None:
+    ifc = ifcopenshell.file(schema="IFC4")
+    covering = ifc.create_entity("IfcCovering", GlobalId="0cov0000000000000000000")
+    pset = ifc.create_entity(
+        "IfcPropertySet",
+        GlobalId="0pset000000000000000000",
+        Name="VAMOIC",
+        HasProperties=[
+            ifc.create_entity(
+                "IfcPropertySingleValue",
+                Name="Nosaukums",
+                NominalValue=ifc.create_entity("IfcText", "Griesti"),
+            ),
+            ifc.create_entity(
+                "IfcPropertySingleValue",
+                Name="Tips",
+                NominalValue=ifc.create_entity("IfcText", "   "),
+            ),
+            ifc.create_entity("IfcPropertySingleValue", Name="Materiāls"),
+        ],
+    )
+    ifc.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId="0rel1000000000000000000",
+        RelatedObjects=[covering],
+        RelatingPropertyDefinition=pset,
+    )
+
+    occurrence = element_property_set_occurrences(covering)[0]
+
+    assert occurrence.property_names == ("Nosaukums", "Tips", "Materiāls")
+    assert occurrence.populated_property_names == ("Nosaukums",)
+
+
+def test_populated_property_names_keeps_zero_quantities() -> None:
+    ifc = ifcopenshell.file(schema="IFC4")
+    duct = ifc.create_entity("IfcDuctSegment", GlobalId="0duct000000000000000000")
+    qto = ifc.create_entity(
+        "IfcElementQuantity",
+        GlobalId="0qto0000000000000000000",
+        Name="Qto_DuctSegmentBaseQuantities",
+        Quantities=[ifc.create_entity("IfcQuantityLength", Name="Length", LengthValue=0.0)],
+    )
+    ifc.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId="0rel1000000000000000000",
+        RelatedObjects=[duct],
+        RelatingPropertyDefinition=qto,
+    )
+
+    occurrence = element_property_set_occurrences(duct)[0]
+
+    assert occurrence.populated_property_names == ("Length",)
+
+
 def test_element_property_set_occurrences_covers_one_element() -> None:
     ifc = _build_model()
     covering = ifc.by_type("IfcCovering")[0]
