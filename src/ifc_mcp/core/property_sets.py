@@ -128,14 +128,47 @@ def _to_occurrence(
     )
 
 
+_METADATA_ATTRIBUTES = frozenset(
+    {
+        # IfcProperty / IfcPhysicalQuantity base attributes.
+        "Name",
+        "Description",
+        # IfcPropertySingleValue / IfcPropertyBoundedValue / IfcPropertyListValue
+        # and every IfcPhysicalSimpleQuantity subtype: the measure's unit.
+        "Unit",
+        # IFC4 IfcPhysicalSimpleQuantity subtypes: how the value was derived.
+        "Formula",
+        # IfcPropertyEnumeratedValue: the enumeration of *allowed* values; the
+        # actual selection lives in EnumerationValues.
+        "EnumerationReference",
+        # IfcPropertyReferenceValue and IfcComplexProperty: describes how the
+        # referenced object / sub-properties are used, not the value itself
+        # (PropertyReference / HasProperties carry the value).
+        "UsageName",
+        # IfcPropertyTableValue: the values live in DefiningValues/DefinedValues.
+        "Expression",
+        "DefiningUnit",
+        "DefinedUnit",
+        "CurveInterpolation",
+        # IfcPhysicalComplexQuantity: descriptors of the grouping; the values
+        # live in HasQuantities.
+        "Discrimination",
+        "Quality",
+        "Usage",
+    }
+)
+
+
 def _has_value(member: Any) -> bool:
     """Report whether a property or quantity carries a non-empty value.
 
     A property declared by an export mapping but left blank is structurally
     present and materially missing; callers usually need to tell those apart.
+    Only value-carrying attributes count; anything in `_METADATA_ATTRIBUTES`
+    (units, formulas, enumeration references, usage descriptors) is skipped.
     """
     for index, attribute in enumerate(member.wrapped_data.get_attribute_names()):
-        if attribute in ("Name", "Description", "Unit", "Formula"):
+        if attribute in _METADATA_ATTRIBUTES:
             continue
         value = member[index]
         if hasattr(value, "wrappedValue"):

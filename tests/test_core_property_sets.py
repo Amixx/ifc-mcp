@@ -132,6 +132,48 @@ def test_populated_property_names_excludes_blank_values() -> None:
     assert occurrence.populated_property_names == ("Nosaukums",)
 
 
+def test_populated_property_names_ignores_enumeration_reference_without_values() -> None:
+    ifc = ifcopenshell.file(schema="IFC4")
+    covering = ifc.create_entity("IfcCovering", GlobalId="0cov0000000000000000000")
+    enumeration = ifc.create_entity(
+        "IfcPropertyEnumeration",
+        Name="PEnum_Status",
+        EnumerationValues=[
+            ifc.create_entity("IfcLabel", "New"),
+            ifc.create_entity("IfcLabel", "Existing"),
+        ],
+    )
+    pset = ifc.create_entity(
+        "IfcPropertySet",
+        GlobalId="0pset000000000000000000",
+        Name="Pset_Status",
+        HasProperties=[
+            ifc.create_entity(
+                "IfcPropertyEnumeratedValue",
+                Name="Blank",
+                EnumerationReference=enumeration,
+            ),
+            ifc.create_entity(
+                "IfcPropertyEnumeratedValue",
+                Name="Filled",
+                EnumerationValues=[ifc.create_entity("IfcLabel", "New")],
+                EnumerationReference=enumeration,
+            ),
+        ],
+    )
+    ifc.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId="0rel1000000000000000000",
+        RelatedObjects=[covering],
+        RelatingPropertyDefinition=pset,
+    )
+
+    occurrence = element_property_set_occurrences(covering)[0]
+
+    assert occurrence.property_names == ("Blank", "Filled")
+    assert occurrence.populated_property_names == ("Filled",)
+
+
 def test_populated_property_names_keeps_zero_quantities() -> None:
     ifc = ifcopenshell.file(schema="IFC4")
     duct = ifc.create_entity("IfcDuctSegment", GlobalId="0duct000000000000000000")
