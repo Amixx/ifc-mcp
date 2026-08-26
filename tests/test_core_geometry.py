@@ -90,3 +90,32 @@ def test_mesh_batch_time_budget_cuts_off_iterator_and_reports_diagnostics() -> N
 
     assert result.diagnostics
     assert any("time budget" in row["reason"] for row in result.diagnostics)
+
+
+def _triangle_count(result) -> int:
+    return sum(len(geometry["indices"]) // 3 for geometry in result.geometries.values())
+
+
+def test_mesh_batch_deflection_defaults_leave_ifcopenshell_settings_untouched() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    default = extract_element_meshes_batch(ifc, threads=1)
+    explicit = extract_element_meshes_batch(
+        ifc, threads=1, linear_deflection=0.001, angular_deflection=0.5
+    )
+
+    assert _triangle_count(default) == _triangle_count(explicit)
+
+
+def test_mesh_batch_coarse_deflection_reduces_triangles_without_dropping_elements() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    fine = extract_element_meshes_batch(ifc, threads=1, linear_deflection=0.001)
+    coarse = extract_element_meshes_batch(
+        ifc, threads=1, linear_deflection=0.2, angular_deflection=1.2
+    )
+
+    assert _triangle_count(coarse) < _triangle_count(fine)
+    assert {row["global_id"] for row in coarse.instances} == {
+        row["global_id"] for row in fine.instances
+    }

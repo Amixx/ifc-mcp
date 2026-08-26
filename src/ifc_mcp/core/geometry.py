@@ -149,6 +149,8 @@ def extract_element_meshes_batch(
     include_guids: Iterable[str] | None = None,
     threads: int = 4,
     time_budget_s: float | None = None,
+    linear_deflection: float | None = None,
+    angular_deflection: float | None = None,
 ) -> MeshExtractionResult:
     """Tessellate elements into deduplicated local-space geometry plus per-instance world
     transforms, for real (triangulated) web rendering -- not just bounding boxes.
@@ -161,6 +163,15 @@ def extract_element_meshes_batch(
     :func:`extract_element_bounds_batch` -- real Revit architecture exports can be orders of
     magnitude slower per element than MEP/services content (measured: ~0.0009s/element vs.
     ~0.3s/element on real client files), so an unbounded pass is not safe to run inline.
+
+    ``linear_deflection`` (metres of chord error, IfcOpenShell default 0.001) and
+    ``angular_deflection`` (radians, default 0.5) select the mesher's fidelity, letting one
+    caller build several level-of-detail tiers from the same file. Both default to ``None``,
+    which leaves IfcOpenShell's own defaults untouched. They only affect geometry the mesher
+    actually discretises: curved and swept surfaces respond, while representations whose
+    curves were already flattened to explicit polylines/tessellations by the authoring tool
+    (common in Revit MEP exports) hit a floor no deflection setting can push past -- callers
+    that need to go below that floor must decimate the resulting triangles instead.
     """
     class_filter = set(include_classes or [])
     guid_filter = set(include_guids or [])
@@ -186,6 +197,10 @@ def extract_element_meshes_batch(
         settings.set("use-world-coords", False)
         settings.set("weld-vertices", True)
         settings.set("apply-default-materials", True)
+        if linear_deflection is not None:
+            settings.set("mesher-linear-deflection", linear_deflection)
+        if angular_deflection is not None:
+            settings.set("mesher-angular-deflection", angular_deflection)
 
         deadline = _time.monotonic() + time_budget_s if time_budget_s else None
         iterator = ifcopenshell.geom.iterator(settings, ifc, max(1, threads), include=elements)
