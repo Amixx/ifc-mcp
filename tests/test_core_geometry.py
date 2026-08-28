@@ -119,3 +119,32 @@ def test_mesh_batch_coarse_deflection_reduces_triangles_without_dropping_element
     assert {row["global_id"] for row in coarse.instances} == {
         row["global_id"] for row in fine.instances
     }
+
+
+def test_mesh_batch_exclude_openings_drops_opening_products_and_boolean_cuts() -> None:
+    ifc = ifcopenshell.open("data/BasicHouse.ifc")
+    voided_wall = next(
+        rel.RelatingBuildingElement
+        for rel in ifc.by_type("IfcRelVoidsElement")
+        if rel.RelatingBuildingElement.is_a("IfcWall")
+    )
+    guids = {voided_wall.GlobalId} | {
+        opening.GlobalId for opening in ifc.by_type("IfcOpeningElement")
+    }
+
+    cut = extract_element_meshes_batch(ifc, threads=1, include_guids=guids)
+    uncut = extract_element_meshes_batch(
+        ifc, threads=1, include_guids=guids, exclude_openings=True
+    )
+
+    assert any(row["ifc_class"] == "IfcOpeningElement" for row in cut.instances)
+    assert {row["global_id"] for row in uncut.instances} == {voided_wall.GlobalId}
+    assert all(
+        row["ifc_class"] != "IfcOpeningElement" for row in uncut.diagnostics
+    )
+
+    def wall_triangles(result) -> int:
+        row = next(r for r in result.instances if r["global_id"] == voided_wall.GlobalId)
+        return len(result.geometries[row["geometry_id"]]["indices"]) // 3
+
+    assert wall_triangles(uncut) < wall_triangles(cut)

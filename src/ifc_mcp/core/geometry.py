@@ -151,6 +151,7 @@ def extract_element_meshes_batch(
     time_budget_s: float | None = None,
     linear_deflection: float | None = None,
     angular_deflection: float | None = None,
+    exclude_openings: bool = False,
 ) -> MeshExtractionResult:
     """Tessellate elements into deduplicated local-space geometry plus per-instance world
     transforms, for real (triangulated) web rendering -- not just bounding boxes.
@@ -172,6 +173,13 @@ def extract_element_meshes_batch(
     curves were already flattened to explicit polylines/tessellations by the authoring tool
     (common in Revit MEP exports) hit a floor no deflection setting can push past -- callers
     that need to go below that floor must decimate the resulting triangles instead.
+
+    ``exclude_openings`` drops ``IfcOpeningElement`` products from the output entirely and
+    disables the boolean subtraction of openings from their host elements, so walls and
+    slabs tessellate as solid uncut volumes. Windows and doors are separate products and
+    still tessellate normally. Intended for orientation-grade viewers where hole fidelity
+    does not matter; it also removes the phantom opening solids that would otherwise sit
+    inside every cut.
     """
     class_filter = set(include_classes or [])
     guid_filter = set(include_guids or [])
@@ -179,6 +187,7 @@ def extract_element_meshes_batch(
         element
         for element in ifc.by_type("IfcElement")
         if _included(element, class_filter=class_filter, guid_filter=guid_filter)
+        and not (exclude_openings and element.is_a("IfcOpeningElement"))
     ]
     by_guid = {
         element.GlobalId: element for element in elements if getattr(element, "GlobalId", None)
@@ -197,6 +206,8 @@ def extract_element_meshes_batch(
         settings.set("use-world-coords", False)
         settings.set("weld-vertices", True)
         settings.set("apply-default-materials", True)
+        if exclude_openings:
+            settings.set("disable-opening-subtractions", True)
         if linear_deflection is not None:
             settings.set("mesher-linear-deflection", linear_deflection)
         if angular_deflection is not None:
