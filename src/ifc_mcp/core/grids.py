@@ -8,6 +8,26 @@ import ifcopenshell.util.placement
 import ifcopenshell.util.unit
 
 
+def get_grid_axis_tags(ifc: Any) -> list[dict[str, Any]]:
+    """Return each IfcGrid's axis tags, concatenated in UAxes/VAxes/WAxes order.
+
+    `IfcGridAxis.AxisTag` carries the label a coordinator references ("1", "A"), and is
+    the only place an axis label lives — `IfcGrid.Name` is a container name that Revit
+    fills with a fixed string. `AxisTag` is optional, so an axis without one contributes
+    ``None``: that keeps an untagged axis distinguishable from a grid carrying no axes at
+    all, whose ``axis_tags`` is empty.
+    """
+    rows: list[dict[str, Any]] = []
+    for grid in ifc.by_type("IfcGrid"):
+        tags: list[str | None] = []
+        for axes in (grid.UAxes or [], grid.VAxes or [], grid.WAxes or []):
+            for axis in axes:
+                tag = getattr(axis, "AxisTag", None)
+                tags.append(str(tag) if tag is not None else None)
+        rows.append({"global_id": grid.GlobalId, "axis_tags": tags})
+    return sorted(rows, key=lambda row: str(row["global_id"]))
+
+
 def get_grid_extents(ifc: Any) -> dict[str, Any] | None:
     """Return XY extents for IfcGrid axis polyline points in metres."""
     unit_scale = ifcopenshell.util.unit.calculate_unit_scale(ifc)
