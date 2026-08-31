@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import ifcopenshell
@@ -13,10 +13,27 @@ import ifcopenshell.util.unit
 
 @dataclass(frozen=True)
 class BoundsExtractionResult:
-    """Targeted bounds plus diagnostics for elements that could not be bounded."""
+    """Targeted bounds, diagnostics for unbounded elements, and elements never scanned.
+
+    ``diagnostics`` describes elements the extraction reached and could not bound — a
+    property of the model, the same on every run. ``unscanned`` describes elements a
+    caller-supplied ``time_budget_s`` cut off before the iterator reached them: which
+    elements land there depends on how fast the machine was, so ``bounds`` is then a
+    prefix of the model rather than the model.
+
+    The two are separate because "this element has no usable geometry" and "this element
+    was never looked at" are different claims, and a caller that publishes counts has to
+    tell them apart. ``unscanned`` is empty whenever no time budget was set.
+    """
 
     bounds: list[dict[str, Any]]
     diagnostics: list[dict[str, Any]]
+    unscanned: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def complete(self) -> bool:
+        """Whether every requested element was scanned, so the counts describe the model."""
+        return not self.unscanned
 
 
 @dataclass(frozen=True)
@@ -62,20 +79,24 @@ def extract_element_bounds_batch(
     include_guids: Iterable[str] | None = None,
     threads: int = 4,
     prefer_parametric: bool = True,
-    time_budget_s: float = 120.0,
+    time_budget_s: float | None = None,
 ) -> BoundsExtractionResult:
     """Compute targeted element bounds with cheap parametric extraction before tessellation.
 
     The parametric path handles common swept-solid representations without invoking
     OpenCascade. Remaining elements fall back to the IfcOpenShell geometry iterator.
 
+    By default the iterator runs to completion, so ``bounds`` and ``diagnostics`` are a
+    function of the file alone: the same IFC yields the same two lists on every machine.
+
     Real Revit-exported architecture (many boolean opening subtractions) can make the
     iterator fallback take minutes per hundred elements rather than the sub-second cost
-    typical of MEP/services content — measured on real client files, not a synthetic
-    worst case. ``time_budget_s`` bounds the iterator fallback's wall-clock cost so one
-    pathological discipline file cannot stall a whole batch; elements not reached in time
-    fall through to the placement-origin fallback (or diagnostics if that also fails),
-    same as any other unbounded element.
+    typical of MEP/services content. A caller that cannot afford to wait may set
+    ``time_budget_s`` to stop the iterator after that many seconds; the elements it never
+    reached are then reported in ``unscanned`` rather than folded into ``diagnostics``,
+    and ``complete`` is False. A wall clock makes the split between bounded and unbounded
+    depend on machine load, so a caller that publishes either count must either leave
+    ``time_budget_s`` unset or refuse to publish when ``complete`` is False.
     """
 
     class_filter = set(include_classes or [])
@@ -111,35 +132,37 @@ def extract_element_bounds_batch(
         if getattr(element, "GlobalId", None)
         and getattr(element, "GlobalId", None) not in bounds_by_guid
     ]
-    iterator_bounds, timed_out_guids = _extract_bounds_with_iterator(
+    iterator_bounds, unscanned_guids = _extract_bounds_with_iterator(
         ifc, remaining, by_guid, threads=threads, time_budget_s=time_budget_s
     )
     bounds_by_guid.update(iterator_bounds)
 
     diagnostics = []
+    unscanned = []
     for element in elements:
         guid = getattr(element, "GlobalId", None)
         if not guid or guid in bounds_by_guid:
             continue
-        reason = (
-            "geometry iterator time budget exceeded"
-            if guid in timed_out_guids
-            else _unbounded_reason(element)
-        )
-        diagnostics.append(
-            {
-                "global_id": guid,
-                "ifc_class": element.is_a(),
-                "name": getattr(element, "Name", None),
-                "tag": getattr(element, "Tag", None),
-                "reason": reason,
-            }
-        )
+        if guid in unscanned_guids:
+            unscanned.append(_element_row(element, "geometry iterator time budget exceeded"))
+        else:
+            diagnostics.append(_element_row(element, _unbounded_reason(element)))
 
     return BoundsExtractionResult(
         bounds=sorted(bounds_by_guid.values(), key=_sort_key),
         diagnostics=sorted(diagnostics, key=_sort_key),
+        unscanned=sorted(unscanned, key=_sort_key),
     )
+
+
+def _element_row(element: Any, reason: str) -> dict[str, Any]:
+    return {
+        "global_id": element.GlobalId,
+        "ifc_class": element.is_a(),
+        "name": getattr(element, "Name", None),
+        "tag": getattr(element, "Tag", None),
+        "reason": reason,
+    }
 
 
 def extract_element_meshes_batch(
@@ -196,6 +219,7 @@ def extract_element_meshes_batch(
     geometries: dict[str, dict[str, Any]] = {}
     instances: list[dict[str, Any]] = []
     visited_guids: set[str] = set()
+    budget_expired = False
 
     try:
         import time as _time  # pylint: disable=import-outside-toplevel
@@ -213,7 +237,7 @@ def extract_element_meshes_batch(
         if angular_deflection is not None:
             settings.set("mesher-angular-deflection", angular_deflection)
 
-        deadline = _time.monotonic() + time_budget_s if time_budget_s else None
+        deadline = _time.monotonic() + time_budget_s if time_budget_s is not None else None
         iterator = ifcopenshell.geom.iterator(settings, ifc, max(1, threads), include=elements)
         if iterator.initialize():
             while True:
@@ -241,6 +265,7 @@ def extract_element_meshes_batch(
                         }
                     )
                 if deadline is not None and _time.monotonic() >= deadline:
+                    budget_expired = True
                     break
                 if not iterator.next():
                     break
@@ -255,18 +280,10 @@ def extract_element_meshes_batch(
             continue
         reason = (
             "geometry iterator time budget exceeded"
-            if guid not in visited_guids and time_budget_s is not None
+            if budget_expired and guid not in visited_guids
             else _unbounded_reason(element)
         )
-        diagnostics.append(
-            {
-                "global_id": guid,
-                "ifc_class": element.is_a(),
-                "name": getattr(element, "Name", None),
-                "tag": getattr(element, "Tag", None),
-                "reason": reason,
-            }
-        )
+        diagnostics.append(_element_row(element, reason))
 
     return MeshExtractionResult(
         geometries=geometries,
@@ -348,7 +365,12 @@ def _extract_bounds_with_iterator(
     threads: int,
     time_budget_s: float | None = None,
 ) -> tuple[dict[str, dict[str, Any]], set[str]]:
-    """Returns (bounds by guid, guids the time budget cut off before the iterator reached them)."""
+    """Returns (bounds by guid, guids a time budget cut off before the iterator reached them).
+
+    The second set is empty unless a budget was set and the clock actually ran out. An
+    element the iterator ran past without yielding is unbounded on its own merits, not
+    unscanned, so it belongs in the caller's diagnostics with its real reason.
+    """
     import time as _time  # pylint: disable=import-outside-toplevel
 
     bounds: dict[str, dict[str, Any]] = {}
@@ -356,42 +378,44 @@ def _extract_bounds_with_iterator(
     if not elements:
         return bounds, set()
 
-    deadline = _time.monotonic() + time_budget_s if time_budget_s else None
+    deadline = _time.monotonic() + time_budget_s if time_budget_s is not None else None
+    budget_expired = False
 
-    try:
-        import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
+    import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
 
-        settings = ifcopenshell.geom.settings()
-        settings.set("use-world-coords", True)
-        settings.set("disable-opening-subtractions", True)
-        settings.set("no-normals", True)
-        iterator = ifcopenshell.geom.iterator(settings, ifc, max(1, threads), include=elements)
-        if iterator.initialize():
-            while True:
-                shape = iterator.get()
-                seen_guids.add(shape.guid)
-                vertices = list(getattr(shape.geometry, "verts", []) or [])
-                element = by_guid.get(shape.guid)
-                if vertices and element is not None:
-                    bounds[shape.guid] = _bounds_row(
-                        element,
-                        _bounds_from_vertices(vertices),
-                        source="ifcopenshell.geom world coordinates",
-                        vertex_count=len(vertices) // 3,
-                    )
-                if deadline is not None and _time.monotonic() >= deadline:
-                    break
-                if not iterator.next():
-                    break
-    except Exception:
+    settings = ifcopenshell.geom.settings()
+    settings.set("use-world-coords", True)
+    settings.set("disable-opening-subtractions", True)
+    settings.set("no-normals", True)
+    iterator = ifcopenshell.geom.iterator(settings, ifc, max(1, threads), include=elements)
+    if iterator.initialize():
+        while True:
+            shape = iterator.get()
+            seen_guids.add(shape.guid)
+            vertices = list(getattr(shape.geometry, "verts", []) or [])
+            element = by_guid.get(shape.guid)
+            if vertices and element is not None:
+                bounds[shape.guid] = _bounds_row(
+                    element,
+                    _bounds_from_vertices(vertices),
+                    source="ifcopenshell.geom world coordinates",
+                    vertex_count=len(vertices) // 3,
+                )
+            if deadline is not None and _time.monotonic() >= deadline:
+                budget_expired = True
+                break
+            if not iterator.next():
+                break
+
+    if not budget_expired:
         return bounds, set()
 
-    timed_out = {
+    unscanned = {
         guid
         for element in elements
         if (guid := getattr(element, "GlobalId", None)) and guid not in seen_guids
     }
-    return bounds, timed_out
+    return bounds, unscanned
 
 
 def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, list[float]] | None:

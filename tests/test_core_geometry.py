@@ -148,3 +148,72 @@ def test_mesh_batch_exclude_openings_drops_opening_products_and_boolean_cuts() -
         return len(result.geometries[row["geometry_id"]]["indices"]) // 3
 
     assert wall_triangles(uncut) < wall_triangles(cut)
+
+
+def _guids_with_global_id(ifc) -> set[str]:
+    return {
+        element.GlobalId
+        for element in ifc.by_type("IfcElement")
+        if getattr(element, "GlobalId", None)
+    }
+
+
+def test_bounds_batch_default_scans_every_element_and_partitions_them() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    result = extract_element_bounds_batch(ifc, threads=1)
+
+    assert result.complete
+    assert result.unscanned == []
+    bounded = {row["global_id"] for row in result.bounds}
+    unbounded = {row["global_id"] for row in result.diagnostics}
+    assert bounded.isdisjoint(unbounded)
+    assert bounded | unbounded == _guids_with_global_id(ifc)
+
+
+def test_bounds_batch_without_a_budget_never_blames_a_time_budget() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    result = extract_element_bounds_batch(ifc, threads=1)
+
+    assert all("time budget" not in row["reason"] for row in result.diagnostics)
+
+
+def test_bounds_batch_default_is_deterministic_across_runs() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    first = extract_element_bounds_batch(ifc, threads=1)
+    second = extract_element_bounds_batch(ifc, threads=1)
+
+    assert first.bounds == second.bounds
+    assert first.diagnostics == second.diagnostics
+
+
+def test_bounds_batch_time_budget_reports_unscanned_apart_from_diagnostics() -> None:
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    result = extract_element_bounds_batch(ifc, threads=1, time_budget_s=0.0)
+
+    assert not result.complete
+    assert result.unscanned
+    expired = "geometry iterator time budget exceeded"
+    assert all(row["reason"] == expired for row in result.unscanned)
+    unscanned = {row["global_id"] for row in result.unscanned}
+    assert unscanned.isdisjoint({row["global_id"] for row in result.diagnostics})
+    assert unscanned.isdisjoint({row["global_id"] for row in result.bounds})
+    assert all("time budget" not in row["reason"] for row in result.diagnostics)
+
+
+def test_bounds_batch_time_budget_only_moves_elements_out_of_the_complete_scan() -> None:
+    """A truncated run is a prefix: it never bounds an element the complete run could not."""
+    ifc = ifcopenshell.open("data/Building-Architecture.ifc")
+
+    complete = extract_element_bounds_batch(ifc, threads=1)
+    truncated = extract_element_bounds_batch(ifc, threads=1, time_budget_s=0.0)
+
+    assert {row["global_id"] for row in truncated.bounds} <= {
+        row["global_id"] for row in complete.bounds
+    }
+    assert {row["global_id"] for row in truncated.unscanned} <= {
+        row["global_id"] for row in complete.bounds
+    } | {row["global_id"] for row in complete.diagnostics}
