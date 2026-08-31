@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from ifc_mcp.core.index import ModelIndex
 
 
-def build_storey_containment_map(
-    model: ModelIndex,
-) -> tuple[set[str], dict[str, dict[str, Any]]]:
-    """Return element GlobalIds directly contained by spatial structure."""
-    cached = model.relationship_cache.get("storey_containment")
-    if cached is not None:
-        return cached
-
-    contained_guids: set[str] = set()
-    container_info_by_guid: dict[str, dict[str, Any]] = {}
-
+def _iter_containments(model: ModelIndex) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield one ``(element GlobalId, container info)`` pair per containment edge."""
     for relation in model.relationships.get("spatial_containment", []):
         container_guid = relation.get("container_guid")
         if not container_guid:
@@ -30,11 +22,47 @@ def build_storey_containment_map(
             or (container.name if container else None),
         }
         for child_guid in relation.get("element_guids", []):
-            container_info_by_guid[child_guid] = container_info
-            if container_info["ifc_class"] == "IfcBuildingStorey":
-                contained_guids.add(child_guid)
+            yield child_guid, container_info
 
-    result = (contained_guids, container_info_by_guid)
+
+def build_storey_container_map(
+    model: ModelIndex,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return every IfcBuildingStorey each element is directly contained by.
+
+    ``build_storey_containment_map`` keeps a single container per element, so a file that
+    contains one element in two storeys — invalid under IFC, and something real exports
+    and federated deliveries carry — is indistinguishable there from a correctly placed
+    one. This map keeps one entry per ``IfcRelContainedInSpatialStructure`` edge that
+    lands on a storey, so a caller can tell the two apart. Elements no storey contains
+    directly are absent.
+    """
+    cached = model.relationship_cache.get("storey_containers")
+    if cached is not None:
+        return cached
+
+    storeys_by_guid: dict[str, list[dict[str, Any]]] = {}
+    for child_guid, container_info in _iter_containments(model):
+        if container_info["ifc_class"] == "IfcBuildingStorey":
+            storeys_by_guid.setdefault(child_guid, []).append(container_info)
+
+    model.relationship_cache["storey_containers"] = storeys_by_guid
+    return storeys_by_guid
+
+
+def build_storey_containment_map(
+    model: ModelIndex,
+) -> tuple[set[str], dict[str, dict[str, Any]]]:
+    """Return element GlobalIds directly contained by spatial structure."""
+    cached = model.relationship_cache.get("storey_containment")
+    if cached is not None:
+        return cached
+
+    container_info_by_guid: dict[str, dict[str, Any]] = {}
+    for child_guid, container_info in _iter_containments(model):
+        container_info_by_guid[child_guid] = container_info
+
+    result = (set(build_storey_container_map(model)), container_info_by_guid)
     model.relationship_cache["storey_containment"] = result
     return result
 

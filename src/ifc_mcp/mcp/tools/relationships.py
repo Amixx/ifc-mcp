@@ -10,6 +10,7 @@ from ifc_mcp.core.relationships import (
     build_aggregate_map,
     build_storey_containment_map,
     has_direct_geometry,
+    resolve_storey_for_element,
 )
 
 
@@ -111,6 +112,12 @@ def classify_elements_by_relation(
     parent GlobalId, spatial container metadata, and direct-geometry flag
     from IfcRelContainedInSpatialStructure and IfcRelAggregates.
     Based on parent-child element taxonomy by Kaspars Krauze, 2026.
+
+    An element neither contained on a storey nor decomposed from a whole may still have a
+    place in the model — a room-hosted family is contained in an ``IfcSpace`` that the
+    storey aggregates — so ``investigate`` is reserved for the elements whose storey the
+    spatial hierarchy cannot name at all. ``is_contained_in_building_storey`` continues to
+    report direct containment only.
     """
     excluded = set(exclude_classes or [])
     storey_contained_guids, spatial_info_by_guid = build_storey_containment_map(index)
@@ -131,6 +138,8 @@ def classify_elements_by_relation(
             category = "parent"
         elif is_aggregate_child:
             category = "child"
+        elif resolve_storey_for_element(index, entity.global_id) is not None:
+            category = "parent"
         else:
             category = "investigate"
 
@@ -208,11 +217,15 @@ def find_orphans(
     index: ModelIndex,
     exclude_classes: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Find IfcElement records without spatial containment or aggregate parent.
+    """Find IfcElement records the spatial hierarchy places on no storey.
 
     Returns {"orphans": [...], "stats": {...}} with orphan records,
     diagnostics, direct-geometry flags, and count statistics by IFC class.
     Based on parent-child element taxonomy by Kaspars Krauze, 2026.
+
+    An element contained in an ``IfcSpace`` the storey aggregates, or decomposed from a
+    whole that is placed, is not an orphan: ``resolve_storey_for_element`` reaches a storey
+    from it. Only the elements that route to none are reported.
     """
     excluded = set(exclude_classes or [])
     storey_contained_guids, _ = build_storey_containment_map(index)
@@ -226,6 +239,8 @@ def find_orphans(
         if entity.ifc_class in excluded:
             continue
         if entity.global_id in storey_contained_guids or entity.global_id in child_to_parent:
+            continue
+        if resolve_storey_for_element(index, entity.global_id) is not None:
             continue
 
         diagnostic = (
