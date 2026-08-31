@@ -116,8 +116,8 @@ def classify_elements_by_relation(
     An element neither contained on a storey nor decomposed from a whole may still have a
     place in the model — a room-hosted family is contained in an ``IfcSpace`` that the
     storey aggregates — so ``investigate`` is reserved for the elements whose storey the
-    spatial hierarchy cannot name at all. ``is_contained_in_building_storey`` continues to
-    report direct containment only.
+    spatial hierarchy cannot name at all. ``is_contained_in_building_storey`` reports
+    direct containment only, so it stays False for such an element.
     """
     excluded = set(exclude_classes or [])
     storey_contained_guids, spatial_info_by_guid = build_storey_containment_map(index)
