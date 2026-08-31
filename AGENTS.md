@@ -35,6 +35,7 @@
 - Keep parser output schema stable; many tool/lint functions assume these keys.
 - Geometry extraction is lazy by default in `load_model_artifacts()`. Use `extract_geometry=True` (or CLI `--with-geometry`) only for geometry-heavy workflows.
 - On-demand bounds use per-element tessellation with optimized settings (`disable-opening-subtractions`, `keep-bounding-boxes`) and cache results back into the active index.
+- `extract_element_bounds_batch` scans every element by default, so `bounds` and `diagnostics` depend on the file alone. Setting `time_budget_s` trades that away: elements the clock cut off are reported in `unscanned`, `complete` goes False, and the scan is a prefix of the model. Never fold `unscanned` into `diagnostics` — a caller publishing "N elements have no geometry" would then be reporting how busy the machine was.
 - Keep new tool functions pure (`index` in, JSON-serializable dict out).
 - Preserve deterministic behavior across parser/index/lint/diff (no non-deterministic ordering in outputs).
 - Keep README naming uppercase (`README.md`) for root and any future submodule docs.
