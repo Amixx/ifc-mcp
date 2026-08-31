@@ -528,32 +528,40 @@ def _extract_from_profile_set(profile_set) -> list[MaterialComponent]:
 
 
 def _extract_classification_reference(relating_classification) -> ClassificationReference:
-    """Create a normalized classification reference object."""
+    """Create a normalized classification reference object.
+
+    ``ReferencedSource`` may point at another ``IfcClassificationReference`` rather than
+    the classification itself — a Uniclass or OmniClass table exported as a tree of facets
+    nests several levels deep — and only the ``IfcClassification`` at the end of that chain
+    names the system. An association made straight against an ``IfcClassification`` names
+    the system and nothing within it.
+    """
     if relating_classification is None:
         return ClassificationReference(system=None, reference=None, identification=None)
 
-    system = None
-    reference = None
-    identification = None
+    if relating_classification.is_a("IfcClassification"):
+        return ClassificationReference(
+            system=getattr(relating_classification, "Name", None),
+            reference=None,
+            identification=None,
+        )
 
-    if hasattr(relating_classification, "Identification"):
-        identification = relating_classification.Identification
-    if hasattr(relating_classification, "ItemReference") and not identification:
-        identification = relating_classification.ItemReference
+    identification = getattr(relating_classification, "Identification", None) or getattr(
+        relating_classification, "ItemReference", None
+    )
 
-    if hasattr(relating_classification, "Name"):
-        reference = relating_classification.Name
-
-    if relating_classification.is_a("IfcClassificationReference"):
-        referenced_source = getattr(relating_classification, "ReferencedSource", None)
-        if referenced_source is not None:
-            system = getattr(referenced_source, "Name", None)
-    elif relating_classification.is_a("IfcClassification"):
-        system = getattr(relating_classification, "Name", None)
+    source = getattr(relating_classification, "ReferencedSource", None)
+    seen = {relating_classification.id()}
+    while source is not None and source.is_a("IfcClassificationReference"):
+        if source.id() in seen:
+            source = None
+            break
+        seen.add(source.id())
+        source = getattr(source, "ReferencedSource", None)
 
     return ClassificationReference(
-        system=system,
-        reference=reference,
+        system=getattr(source, "Name", None) if source is not None else None,
+        reference=getattr(relating_classification, "Name", None),
         identification=identification,
     )
 

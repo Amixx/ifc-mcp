@@ -10,6 +10,7 @@ import pytest
 from ifc_mcp.core.index import build_index
 from ifc_mcp.core.relationships import (
     build_aggregate_map,
+    build_storey_container_map,
     build_storey_containment_map,
     has_direct_geometry,
     resolve_storey_for_element,
@@ -340,3 +341,57 @@ def synthetic_relationship_index():
         spatial_tree={"roots": [], "total_spatial_nodes": 0},
     )
     return build_index(parsed, scene)
+
+
+def test_storey_container_map_keeps_every_containment_edge(synthetic_relationship_index):
+    """An element two storeys contain is a defect the collapsed map cannot express."""
+    index = synthetic_relationship_index
+    index.entities["STOREY2"] = EntityRecord(
+        global_id="STOREY2", express_id=99, ifc_class="IfcBuildingStorey", name="Level 2"
+    )
+    index.by_guid["STOREY2"] = index.entities["STOREY2"]
+    index.relationships["spatial_containment"].append(
+        {
+            "container_guid": "STOREY2",
+            "container_name": "Level 2",
+            "element_guids": ["CURTAIN1"],
+        }
+    )
+    index.relationship_cache.clear()
+
+    containers = build_storey_container_map(index)
+
+    assert [row["global_id"] for row in containers["CURTAIN1"]] == ["STOREY1", "STOREY2"]
+    assert [row["name"] for row in containers["CURTAIN1"]] == ["Level 1", "Level 2"]
+    assert "MULLION1" not in containers
+
+    contained, _ = build_storey_containment_map(index)
+    assert contained == {"CURTAIN1"}
+
+
+def test_storey_container_map_omits_non_storey_containers(spatial_container_index):
+    containers = build_storey_container_map(spatial_container_index)
+
+    assert containers == {}
+
+
+def test_space_hosted_elements_are_placed_not_orphaned(spatial_container_index):
+    index = spatial_container_index
+
+    orphans = relationships.find_orphans(index)
+    classified = relationships.classify_elements_by_relation(index)
+    categories = {row["global_id"]: row for row in classified["elements"]}
+
+    orphan_guids = {row["global_id"] for row in orphans["orphans"]}
+    assert "FURNITURE1" not in orphan_guids
+    assert "FURNITURE2" not in orphan_guids
+    assert categories["FURNITURE2"]["relation_category"] == "parent"
+    assert categories["FURNITURE2"]["is_contained_in_building_storey"] is False
+    assert categories["FURNITURE2"]["spatial_container_class"] == "IfcSpace"
+
+    # A part of a placed element stays a decomposition child, not a parent.
+    assert categories["FURNITURE1_PART"]["relation_category"] == "child"
+
+    # Elements the hierarchy places on no storey are still orphans.
+    assert {"FURNITURE3", "SIGN1", "FENCE1", "SLAB1"} <= orphan_guids
+    assert categories["FURNITURE3"]["relation_category"] == "investigate"
