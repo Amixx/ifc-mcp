@@ -7,7 +7,7 @@ from .geometry import (
     extract_element_bounds_batch,
     extract_element_meshes_batch,
 )
-from .grids import get_grid_extents
+from .grids import get_grid_axis_tags, get_grid_extents
 from .index import ModelIndex, build_index
 from .parser import parse_ifc, parse_ifc_with_model
 from .pipeline import load_model_artifacts, load_model_artifacts_with_ifc
@@ -33,6 +33,7 @@ __all__ = [
     "extract_element_bounds",
     "extract_element_bounds_batch",
     "extract_element_meshes_batch",
+    "get_grid_axis_tags",
     "get_grid_extents",
     "PropertySetKind",
     "PropertySetOccurrence",

@@ -7,7 +7,7 @@ from typing import Any
 
 import ifcopenshell
 
-from ifc_mcp.core import get_grid_extents
+from ifc_mcp.core import get_grid_axis_tags, get_grid_extents
 from ifc_mcp.core import grids as grid_module
 
 
@@ -55,6 +55,38 @@ def test_get_grid_extents_returns_none_without_grids() -> None:
     assert get_grid_extents(ifc) is None
 
 
+def test_get_grid_axis_tags_reads_every_axis_list() -> None:
+    ifc = FakeIfc(
+        [
+            FakeGrid(
+                GlobalId="grid-b",
+                UAxes=[FakeAxis(FakeCurve(), AxisTag="A"), FakeAxis(FakeCurve(), AxisTag="B")],
+                VAxes=[FakeAxis(FakeCurve(), AxisTag="1")],
+                WAxes=[FakeAxis(FakeCurve(), AxisTag="Z")],
+            ),
+            FakeGrid(GlobalId="grid-a"),
+        ]
+    )
+
+    assert get_grid_axis_tags(ifc) == [
+        {"global_id": "grid-a", "axis_tags": []},
+        {"global_id": "grid-b", "axis_tags": ["A", "B", "1", "Z"]},
+    ]
+
+
+def test_get_grid_axis_tags_keeps_an_untagged_axis_distinguishable() -> None:
+    ifc = FakeIfc(
+        [
+            FakeGrid(
+                GlobalId="grid-a",
+                UAxes=[FakeAxis(FakeCurve(), AxisTag="A"), FakeAxis(FakeCurve())],
+            )
+        ]
+    )
+
+    assert get_grid_axis_tags(ifc) == [{"global_id": "grid-a", "axis_tags": ["A", None]}]
+
+
 @dataclass
 class FakePoint:
     Coordinates: tuple[float, ...]
@@ -77,6 +109,7 @@ class FakePolyline:
 @dataclass
 class FakeAxis:
     AxisCurve: FakeCurve | FakePolyline
+    AxisTag: str | None = None
 
 
 @dataclass
