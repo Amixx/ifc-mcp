@@ -42,18 +42,23 @@ def build_storey_containment_map(
 def resolve_storey_for_element(
     model: ModelIndex, global_id: str
 ) -> dict[str, Any] | None:
-    """Return the IfcBuildingStorey containing an element, resolving through decomposition.
+    """Return the IfcBuildingStorey an element belongs to, walking the spatial hierarchy.
 
-    Per IFC, an element decomposed into parts via ``IfcRelAggregates`` (e.g. a Revit layered
-    floor or roof exported as a parent slab plus child layer-parts) carries no direct
-    ``IfcRelContainedInSpatialStructure`` on the parts; the parts inherit the storey of their
-    whole. ``build_storey_containment_map`` only reports *direct* containment, so callers that
-    rely on it alone miss every decomposition part. This walks the aggregate chain upward from
-    ``global_id`` until a storey container is found.
+    ``build_storey_containment_map`` reports only the storey an element is *directly*
+    contained by, and two common exports name the storey somewhere else:
 
-    Returns the container info dict (``global_id``/``ifc_class``/``name``) or ``None`` when the
-    element resolves to no storey (e.g. it is contained directly under ``IfcBuilding``/``IfcSite``,
-    or is a true orphan with neither containment nor an aggregate parent).
+    - An element decomposed into parts via ``IfcRelAggregates`` (a Revit layered floor
+      exported as a parent slab plus child layer-parts) carries no
+      ``IfcRelContainedInSpatialStructure`` on the parts; they inherit the storey of the whole.
+    - A room-hosted family is contained in the ``IfcSpace`` it sits in, and the space —
+      not the element — is what ``IfcRelAggregates`` places on the storey.
+
+    So the walk follows both edges upward from ``global_id``: the aggregate parent where the
+    node has one, otherwise the spatial element containing it, until a storey is reached.
+
+    Returns the storey info dict (``global_id``/``ifc_class``/``name``) or ``None`` when the
+    element resolves to no storey — it is contained directly under ``IfcBuilding``/``IfcSite``,
+    sits in a space no storey aggregates, or is a true orphan with neither edge.
     """
     _, container_by_guid = build_storey_containment_map(model)
     child_to_parent = build_aggregate_map(model)
@@ -62,10 +67,32 @@ def resolve_storey_for_element(
     while guid and guid not in seen:
         seen.add(guid)
         container = container_by_guid.get(guid)
+        # A storey that contains the node outranks an aggregate parent that also holds it:
+        # containment is the element's own spatial assignment, aggregation only its whole's.
         if container and container.get("ifc_class") == "IfcBuildingStorey":
             return container
-        guid = child_to_parent.get(guid)
+        parent_guid = child_to_parent.get(guid) or (
+            container["global_id"] if container else None
+        )
+        storey = _storey_record(model, parent_guid)
+        if storey is not None:
+            return storey
+        guid = parent_guid
     return None
+
+
+def _storey_record(model: ModelIndex, global_id: str | None) -> dict[str, Any] | None:
+    """Describe a storey in the shape ``build_storey_containment_map`` returns, or None."""
+    if not global_id:
+        return None
+    entity = model.get_entity(global_id)
+    if entity is None or entity.ifc_class != "IfcBuildingStorey":
+        return None
+    return {
+        "global_id": global_id,
+        "ifc_class": entity.ifc_class,
+        "name": entity.name,
+    }
 
 
 def build_aggregate_map(model: ModelIndex) -> dict[str, str]:

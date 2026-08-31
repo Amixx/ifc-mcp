@@ -50,6 +50,50 @@ def test_resolve_storey_for_element(synthetic_relationship_index):
     assert resolve_storey_for_element(index, "SLAB1") is None
 
 
+def test_resolve_storey_through_a_spatial_container(spatial_container_index):
+    index = spatial_container_index
+
+    # An element sitting in a space resolves to the storey that aggregates the space.
+    for guid in ("FURNITURE1", "FURNITURE2"):
+        resolved = resolve_storey_for_element(index, guid)
+        assert resolved is not None
+        assert resolved["global_id"] == "STOREY1"
+        assert resolved["ifc_class"] == "IfcBuildingStorey"
+        assert resolved["name"] == "Level 1"
+
+    # A part of an element that sits in a space inherits the same storey.
+    inherited = resolve_storey_for_element(index, "FURNITURE1_PART")
+    assert inherited is not None and inherited["global_id"] == "STOREY1"
+
+
+def test_resolve_storey_names_no_storey_above_the_storey_level(spatial_container_index):
+    index = spatial_container_index
+
+    # A space no storey aggregates leads nowhere, and neither do the elements in it.
+    assert resolve_storey_for_element(index, "FURNITURE3") is None
+
+    # Containment directly under IfcBuilding or IfcSite names no storey.
+    assert resolve_storey_for_element(index, "SIGN1") is None
+    assert resolve_storey_for_element(index, "FENCE1") is None
+
+    # A true orphan still resolves to no storey.
+    assert resolve_storey_for_element(index, "SLAB1") is None
+
+
+def test_resolve_storey_terminates_on_a_containment_cycle(spatial_container_index):
+    """A malformed export can make two spaces contain each other."""
+    index = spatial_container_index
+    index.relationships["spatial_containment"].extend(
+        [
+            {"container_guid": "SPACE_B", "element_guids": ["SPACE_A"]},
+            {"container_guid": "SPACE_A", "element_guids": ["SPACE_B"]},
+        ]
+    )
+    index.relationship_cache.clear()
+
+    assert resolve_storey_for_element(index, "FURNITURE_CYCLIC") is None
+
+
 def test_classify_elements_by_relation_synthetic(synthetic_relationship_index):
     result = relationships.classify_elements_by_relation(synthetic_relationship_index)
 
@@ -148,6 +192,72 @@ def test_model_store_file_path_resolution_and_missing_file(
         store.resolve("/tmp/ifc-mcp-missing.ifc")
     monkeypatch.setattr(model_store, "_LAST_LOADED_PATH", None)
     monkeypatch.setattr(model_store, "_LAST_LOADED_WITH_GEOMETRY", False)
+
+
+@pytest.fixture()
+def spatial_container_index():
+    """A storey whose spaces hold the elements, as Revit exports room-hosted families.
+
+    The furniture carries no containment on the storey and no aggregate parent of its own:
+    the only route from element to storey runs through the space it sits in and the
+    ``IfcRelAggregates`` that places that space on the storey.
+    """
+    classes = {
+        "SITE1": ("IfcSite", "Site"),
+        "BUILDING1": ("IfcBuilding", "Building"),
+        "STOREY1": ("IfcBuildingStorey", "Level 1"),
+        "SPACE1": ("IfcSpace", "Room 1"),
+        "SPACE2": ("IfcSpace", "Room 2"),
+        "SPACE_UNPLACED": ("IfcSpace", "Unplaced Room"),
+        "SPACE_A": ("IfcSpace", "Room A"),
+        "SPACE_B": ("IfcSpace", "Room B"),
+        "FURNITURE1": ("IfcFurniture", "Desk 1"),
+        "FURNITURE1_PART": ("IfcBuildingElementPart", "Desk 1 top"),
+        "FURNITURE2": ("IfcFurniture", "Desk 2"),
+        "FURNITURE3": ("IfcFurniture", "Desk 3"),
+        "FURNITURE_CYCLIC": ("IfcFurniture", "Desk 4"),
+        "SIGN1": ("IfcSign", "Lobby sign"),
+        "FENCE1": ("IfcRailing", "Site fence"),
+        "SLAB1": ("IfcSlab", "Orphan Slab"),
+    }
+    entities = {
+        guid: EntityRecord(
+            global_id=guid, express_id=index, ifc_class=ifc_class, name=name
+        )
+        for index, (guid, (ifc_class, name)) in enumerate(classes.items(), start=1)
+    }
+    relationships_payload = {
+        "spatial_containment": [
+            {"container_guid": "SPACE1", "element_guids": ["FURNITURE1"]},
+            {"container_guid": "SPACE2", "element_guids": ["FURNITURE2"]},
+            {"container_guid": "SPACE_UNPLACED", "element_guids": ["FURNITURE3"]},
+            {"container_guid": "SPACE_A", "element_guids": ["FURNITURE_CYCLIC"]},
+            {"container_guid": "BUILDING1", "element_guids": ["SIGN1"]},
+            {"container_guid": "SITE1", "element_guids": ["FENCE1"]},
+        ],
+        "aggregates": [
+            {"parent_guid": "SITE1", "child_guids": ["BUILDING1"]},
+            {"parent_guid": "BUILDING1", "child_guids": ["STOREY1", "SPACE_UNPLACED"]},
+            {"parent_guid": "STOREY1", "child_guids": ["SPACE1", "SPACE2"]},
+            {"parent_guid": "FURNITURE1", "child_guids": ["FURNITURE1_PART"]},
+        ],
+        "voids": [],
+        "fills": [],
+        "defines_by_type": [],
+        "defines_by_properties": [],
+        "associates_material": [],
+        "assigns_to_group": [],
+        "associates_classification": [],
+        "spatial_children": {},
+    }
+    parsed = ParsedModel(
+        metadata={"schema": "IFC4"},
+        entities=entities,
+        relationships=relationships_payload,
+        duplicate_guids=[],
+    )
+    scene = SceneModel(elements={}, spatial_tree={"roots": [], "total_spatial_nodes": 0})
+    return build_index(parsed, scene)
 
 
 @pytest.fixture()
