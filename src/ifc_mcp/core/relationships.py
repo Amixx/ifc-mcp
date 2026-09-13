@@ -50,6 +50,55 @@ def build_storey_container_map(
     return storeys_by_guid
 
 
+def get_element_storey_placements(model: ModelIndex, ifc: Any) -> list[dict[str, Any]]:
+    """Return every IfcElement the file declares with the storeys it is placed on.
+
+    One row per element, carrying the identity a reader needs to find it again
+    (``global_id``, ``ifc_class``, ``name``, ``tag``) and a ``storeys`` list holding the
+    ``global_id`` and ``name`` of each storey it sits on.
+
+    The direct containment edges are kept unmerged: an element two
+    ``IfcRelContainedInSpatialStructure`` relations place on two storeys carries both, so a
+    caller can see that the file says two things about where it is. Only an element no
+    storey contains directly falls back to ``resolve_storey_for_element``, which walks the
+    aggregate and spatial edges upward; an element that walk reaches no storey from carries
+    an empty list.
+
+    Every element is here, openings and decomposed parts included — which of them belong in
+    an answer is the caller's question, not this one's. The exception is an element the file
+    gives no GlobalId: a row is identified by that value, and an element without one cannot
+    be found from a row, so it gets none.
+
+    Rows come in the order the file declares the elements.
+    """
+    direct_containers = build_storey_container_map(model)
+    rows: list[dict[str, Any]] = []
+    for entity in ifc.by_type("IfcElement"):
+        guid = entity.GlobalId
+        if not guid:
+            continue
+        storeys = [
+            {"global_id": storey["global_id"], "name": storey.get("name")}
+            for storey in direct_containers.get(guid, [])
+        ]
+        if not storeys:
+            container = resolve_storey_for_element(model, guid)
+            if container is not None:
+                storeys = [
+                    {"global_id": container["global_id"], "name": container.get("name")}
+                ]
+        rows.append(
+            {
+                "global_id": guid,
+                "ifc_class": entity.is_a(),
+                "name": getattr(entity, "Name", None),
+                "tag": getattr(entity, "Tag", None),
+                "storeys": storeys,
+            }
+        )
+    return rows
+
+
 def build_storey_containment_map(
     model: ModelIndex,
 ) -> tuple[set[str], dict[str, dict[str, Any]]]:
