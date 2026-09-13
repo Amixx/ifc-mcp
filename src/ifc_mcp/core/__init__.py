@@ -1,5 +1,6 @@
 """Core IFC parsing, scene modeling, and indexing."""
 
+from .coordinates import get_site_coordinates
 from .geometry import (
     BoundsExtractionResult,
     MeshExtractionResult,
@@ -17,8 +18,10 @@ from .property_sets import (
     element_property_set_occurrences,
     iter_property_set_occurrences,
 )
+from .relationships import get_element_storey_placements
 from .scene import build_scene_model
 from .simplify import SimplifyResult, needs_simplification, simplify_ifc
+from .storeys import get_storey_elevations
 
 __all__ = [
     "ModelIndex",
@@ -35,6 +38,9 @@ __all__ = [
     "extract_element_meshes_batch",
     "get_grid_axes",
     "get_grid_extents",
+    "get_site_coordinates",
+    "get_storey_elevations",
+    "get_element_storey_placements",
     "PropertySetKind",
     "PropertySetOccurrence",
     "element_property_set_occurrences",

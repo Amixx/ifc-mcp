@@ -12,6 +12,7 @@ from ifc_mcp.core.relationships import (
     build_aggregate_map,
     build_storey_container_map,
     build_storey_containment_map,
+    get_element_storey_placements,
     has_direct_geometry,
     resolve_storey_for_element,
 )
@@ -395,3 +396,124 @@ def test_space_hosted_elements_are_placed_not_orphaned(spatial_container_index):
     # Elements the hierarchy places on no storey are still orphans.
     assert {"FURNITURE3", "SIGN1", "FENCE1", "SLAB1"} <= orphan_guids
     assert categories["FURNITURE3"]["relation_category"] == "investigate"
+
+
+def test_element_storey_placements_cover_every_element(synthetic_relationship_index):
+    ifc = FakeElementIfc(
+        [
+            FakeElement("CURTAIN1", "IfcCurtainWall", "Curtain Wall", "CW-01"),
+            FakeElement("MULLION1", "IfcMember", "Mullion 1", None),
+            FakeElement("SLAB1", "IfcSlab", "Orphan Slab", None),
+        ]
+    )
+
+    assert get_element_storey_placements(synthetic_relationship_index, ifc) == [
+        {
+            "global_id": "CURTAIN1",
+            "ifc_class": "IfcCurtainWall",
+            "name": "Curtain Wall",
+            "tag": "CW-01",
+            "storeys": [{"global_id": "STOREY1", "name": "Level 1"}],
+        },
+        {
+            "global_id": "MULLION1",
+            "ifc_class": "IfcMember",
+            "name": "Mullion 1",
+            "tag": None,
+            "storeys": [{"global_id": "STOREY1", "name": "Level 1"}],
+        },
+        {
+            "global_id": "SLAB1",
+            "ifc_class": "IfcSlab",
+            "name": "Orphan Slab",
+            "tag": None,
+            "storeys": [],
+        },
+    ]
+
+
+def test_element_storey_placements_keep_the_classes_a_caller_may_drop(
+    synthetic_relationship_index,
+):
+    """Openings and decomposition parts are the caller's to exclude, not this helper's."""
+    ifc = FakeElementIfc(
+        [
+            FakeElement("OPENING1", "IfcOpeningElement", "Opening", None),
+            FakeElement("MULLION2", "IfcMember", "Mullion 2", None),
+        ]
+    )
+
+    rows = get_element_storey_placements(synthetic_relationship_index, ifc)
+
+    assert [row["ifc_class"] for row in rows] == ["IfcOpeningElement", "IfcMember"]
+
+
+def test_element_storey_placements_skip_an_element_without_a_global_id(
+    synthetic_relationship_index,
+):
+    ifc = FakeElementIfc(
+        [
+            FakeElement("", "IfcWall", "Unidentified Wall", None),
+            FakeElement("SLAB1", "IfcSlab", "Orphan Slab", None),
+        ]
+    )
+
+    rows = get_element_storey_placements(synthetic_relationship_index, ifc)
+
+    assert [row["global_id"] for row in rows] == ["SLAB1"]
+
+
+def test_element_storey_placements_keep_two_storeys_unmerged(synthetic_relationship_index):
+    index = synthetic_relationship_index
+    index.entities["STOREY2"] = EntityRecord(
+        global_id="STOREY2", express_id=99, ifc_class="IfcBuildingStorey", name="Level 2"
+    )
+    index.by_guid["STOREY2"] = index.entities["STOREY2"]
+    index.relationships["spatial_containment"].append(
+        {
+            "container_guid": "STOREY2",
+            "container_name": "Level 2",
+            "element_guids": ["CURTAIN1"],
+        }
+    )
+    index.relationship_cache.clear()
+    ifc = FakeElementIfc([FakeElement("CURTAIN1", "IfcCurtainWall", "Curtain Wall", None)])
+
+    [row] = get_element_storey_placements(index, ifc)
+
+    assert row["storeys"] == [
+        {"global_id": "STOREY1", "name": "Level 1"},
+        {"global_id": "STOREY2", "name": "Level 2"},
+    ]
+
+
+def test_element_storey_placements_keep_declaration_order(synthetic_relationship_index):
+    ifc = FakeElementIfc(
+        [
+            FakeElement("SLAB1", "IfcSlab", "Orphan Slab", None),
+            FakeElement("CURTAIN1", "IfcCurtainWall", "Curtain Wall", None),
+        ]
+    )
+
+    rows = get_element_storey_placements(synthetic_relationship_index, ifc)
+
+    assert [row["global_id"] for row in rows] == ["SLAB1", "CURTAIN1"]
+
+
+class FakeElement:
+    def __init__(self, global_id, ifc_class, name, tag):
+        self.GlobalId = global_id
+        self.Name = name
+        self.Tag = tag
+        self._ifc_class = ifc_class
+
+    def is_a(self):
+        return self._ifc_class
+
+
+class FakeElementIfc:
+    def __init__(self, elements):
+        self._elements = elements
+
+    def by_type(self, class_name):
+        return list(self._elements) if class_name == "IfcElement" else []
