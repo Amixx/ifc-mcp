@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 RECOMMENDED_RULES: dict[str, str] = {
     "no-unnamed-elements": "warn",
     "require-material-assignment": "warn",
@@ -24,7 +23,7 @@ def load_lint_config(config_path: str | None = None) -> dict[str, Any]:
     """Load .ifclintrc JSON and resolve rule severities."""
     cfg_path = Path(config_path) if config_path else Path.cwd() / ".ifclintrc"
 
-    base = {
+    base: dict[str, Any] = {
         "extends": "recommended",
         "rules": {},
     }

@@ -18,7 +18,9 @@ def test_search_elements_by_class(model_index):
 
 
 def test_audit_property_coverage(model_index):
-    result = query.audit_property_coverage(model_index, property_names=["IsExternal"], ifc_class="IfcWall")
+    result = query.audit_property_coverage(
+        model_index, property_names=["IsExternal"], ifc_class="IfcWall"
+    )
     assert "total" in result
     assert "properties" in result
     assert result["properties"][0]["property_name"] == "IsExternal"

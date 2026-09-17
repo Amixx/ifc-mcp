@@ -14,10 +14,18 @@ from ifc_mcp.diff.engine import diff_ifc_files
 @click.command("diff")
 @click.argument("old_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("new_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", show_default=True)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
 @click.option("--quiet", is_flag=True, help="Suppress progress output.")
 @click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
-def diff_command(old_file: Path, new_file: Path, output_format: str, quiet: bool, verbose: bool) -> None:
+def diff_command(
+    old_file: Path, new_file: Path, output_format: str, quiet: bool, verbose: bool
+) -> None:
     """Diff two IFC models (lightweight deterministic wrapper)."""
     if quiet and verbose:
         raise click.UsageError("Cannot use --quiet and --verbose together.")

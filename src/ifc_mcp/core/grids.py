@@ -45,9 +45,7 @@ def get_grid_axes(ifc: Any) -> list[dict[str, Any]]:
                         "axis_set": axis_set,
                         "axis_tag": str(tag) if tag is not None else None,
                         "curve": curve,
-                        "points_m": [
-                            _to_world_xy(point, matrix, unit_scale) for point in points
-                        ],
+                        "points_m": [_to_world_xy(point, matrix, unit_scale) for point in points],
                     }
                 )
     return rows
@@ -116,16 +114,18 @@ def _coordinates(values: Any) -> tuple[float, float, float]:
     return (coordinates[0], coordinates[1], z)
 
 
-def _to_world_xy(
-    point: tuple[float, float, float], matrix: Any, unit_scale: float
-) -> list[float]:
+def _to_world_xy(point: tuple[float, float, float], matrix: Any, unit_scale: float) -> list[float]:
     x, y, z = point
     world_x = (
-        float(matrix[0][0]) * x + float(matrix[0][1]) * y + float(matrix[0][2]) * z
+        float(matrix[0][0]) * x
+        + float(matrix[0][1]) * y
+        + float(matrix[0][2]) * z
         + float(matrix[0][3])
     )
     world_y = (
-        float(matrix[1][0]) * x + float(matrix[1][1]) * y + float(matrix[1][2]) * z
+        float(matrix[1][0]) * x
+        + float(matrix[1][1]) * y
+        + float(matrix[1][2]) * z
         + float(matrix[1][3])
     )
     return [_round_m(world_x * unit_scale), _round_m(world_y * unit_scale)]

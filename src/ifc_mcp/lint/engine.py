@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any, Callable
+from typing import Any
 
 from ifc_mcp.core.pipeline import load_model_artifacts
 from ifc_mcp.core.types import LintResult
@@ -27,7 +28,9 @@ def lint_ifc_model(
 
     config = load_lint_config(config_path)
     severities: dict[str, str] = config.get("rules", {})
-    active_rules = [rule_id for rule_id in RULE_FUNCTIONS if severities.get(rule_id, "off") != "off"]
+    active_rules = [
+        rule_id for rule_id in RULE_FUNCTIONS if severities.get(rule_id, "off") != "off"
+    ]
 
     findings: list[LintResult] = []
     if progress_callback is not None:

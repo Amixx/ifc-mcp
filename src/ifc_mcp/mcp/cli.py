@@ -11,12 +11,20 @@ from ifc_mcp.mcp.server import run_server
 
 
 @click.command("serve")
-@click.argument("file_path", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--transport", type=click.Choice(["stdio", "http"]), default="stdio", show_default=True)
+@click.argument(
+    "file_path", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path)
+)
+@click.option(
+    "--transport", type=click.Choice(["stdio", "http"]), default="stdio", show_default=True
+)
 @click.option("--port", type=int, default=8000, show_default=True)
 @click.option("--quiet", is_flag=True, help="Suppress progress output.")
 @click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
-@click.option("--with-geometry", is_flag=True, help="Enable eager geometry extraction for loaded models (slower).")
+@click.option(
+    "--with-geometry",
+    is_flag=True,
+    help="Enable eager geometry extraction for loaded models (slower).",
+)
 def serve_command(
     file_path: Path | None,
     transport: str,

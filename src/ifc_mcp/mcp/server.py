@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import platform
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any, cast
 
 from ifc_mcp import __version__
 from ifc_mcp.core.index import ModelIndex
@@ -46,10 +47,12 @@ def create_mcp_server(
     elif file_path:
         store.load(file_path, with_geometry=with_geometry)
 
-    def _resolve_index(request_file_path: str | None) -> tuple[ModelIndex | None, dict[str, Any] | None]:
+    def _resolve_index(
+        request_file_path: str | None,
+    ) -> tuple[ModelIndex | None, dict[str, Any] | None]:
         try:
             return store.resolve(request_file_path), None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - MCP tools serialize operational errors.
             return None, {
                 "error": str(exc),
                 "hint": "Call load_model(file_path) first or pass file_path to this tool.",
@@ -57,7 +60,10 @@ def create_mcp_server(
 
     @mcp.tool()
     def load_model(file_path: str, with_geometry: bool = False) -> dict[str, Any]:
-        """Load or switch the active IFC model from an absolute file path for subsequent tool calls."""
+        """Load or switch the active IFC model from an absolute file path.
+
+        Subsequent tool calls use the selected model.
+        """
         try:
             index_obj = store.load(file_path, with_geometry=with_geometry)
             return {
@@ -67,7 +73,7 @@ def create_mcp_server(
                 "summary": meta.get_model_summary(index_obj),
                 "cached_models": store.status()["cached_models"],
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - MCP tools serialize operational errors.
             return {"error": str(exc), "file_path": file_path}
 
     @mcp.tool()
@@ -98,10 +104,11 @@ def create_mcp_server(
 
     @mcp.tool()
     def get_element_by_id(global_id: str, file_path: str | None = None) -> dict[str, Any]:
-        """Get full details for one element by GlobalId. If file_path is set, that file is loaded first."""
+        """Get one element by GlobalId, loading file_path first when provided."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return query.get_element_by_id(index_obj, global_id)
 
     @mcp.tool()
@@ -112,11 +119,14 @@ def create_mcp_server(
         material: str | None = None,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        """Search elements by optional class/name/floor/material filters; optionally load specific file_path."""
+        """Search elements by optional class, name, floor, or material filters."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
-        return query.search_elements(index_obj, ifc_class=ifc_class, name=name, floor=floor, material=material)
+        index_obj = cast(ModelIndex, index_obj)
+        return query.search_elements(
+            index_obj, ifc_class=ifc_class, name=name, floor=floor, material=material
+        )
 
     @mcp.tool()
     def audit_property_coverage(
@@ -133,6 +143,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return query.audit_property_coverage(
             index_obj,
             property_names=property_names,
@@ -150,14 +161,16 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return query.get_element_properties(index_obj, global_id)
 
     @mcp.tool()
     def get_spatial_structure(file_path: str | None = None) -> dict[str, Any]:
-        """Get full Site -> Building -> Storey -> Space hierarchy for active or provided file_path."""
+        """Get the Site -> Building -> Storey -> Space hierarchy."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return spatial.get_spatial_structure(index_obj)
 
     @mcp.tool()
@@ -166,6 +179,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return spatial.get_elements_in_space(index_obj, space_id)
 
     @mcp.tool()
@@ -174,22 +188,25 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.get_connected_elements(index_obj, global_id)
 
     @mcp.tool()
     def get_contained_elements(global_id: str, file_path: str | None = None) -> dict[str, Any]:
-        """Get children from spatial containment and aggregation for active or provided file_path."""
+        """Get children from spatial containment and aggregation."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.get_contained_elements(index_obj, global_id)
 
     @mcp.tool()
     def get_element_material(global_id: str, file_path: str | None = None) -> dict[str, Any]:
-        """Get assigned material layers/constituents/list for element from active or provided file_path."""
+        """Get an element's assigned material layers, constituents, or list."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.get_element_material(index_obj, global_id)
 
     @mcp.tool()
@@ -197,10 +214,11 @@ def create_mcp_server(
         exclude_classes: list[str] | None = None,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        """Classify IfcElement records using IfcRelContainedInSpatialStructure and IfcRelAggregates."""
+        """Classify elements using containment and aggregation relationships."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.classify_elements_by_relation(
             index_obj,
             exclude_classes=exclude_classes,
@@ -212,6 +230,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.get_aggregate_relationships(index_obj)
 
     @mcp.tool()
@@ -219,10 +238,11 @@ def create_mcp_server(
         exclude_classes: list[str] | None = None,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        """Find IfcElement records missing IfcRelContainedInSpatialStructure and IfcRelAggregates links."""
+        """Find elements missing containment and aggregation relationships."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return relationships.find_orphans(index_obj, exclude_classes=exclude_classes)
 
     @mcp.tool()
@@ -232,11 +252,14 @@ def create_mcp_server(
         material: str | None = None,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        """Get aggregated quantities (count, area, volume, length) for active or provided file_path."""
+        """Get aggregated counts, areas, volumes, and lengths."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
-        return quantities.get_quantities(index_obj, ifc_class=ifc_class, floor=floor, material=material)
+        index_obj = cast(ModelIndex, index_obj)
+        return quantities.get_quantities(
+            index_obj, ifc_class=ifc_class, floor=floor, material=material
+        )
 
     @mcp.tool()
     def get_material_summary(file_path: str | None = None) -> dict[str, Any]:
@@ -244,6 +267,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return quantities.get_material_summary(index_obj)
 
     @mcp.tool()
@@ -252,6 +276,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return quantities.get_space_summary(index_obj, floor=floor)
 
     @mcp.tool()
@@ -265,7 +290,10 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
-        return analysis.find_elements_by_property(index_obj, property_name=property_name, value=value, operator=operator)
+        index_obj = cast(ModelIndex, index_obj)
+        return analysis.find_elements_by_property(
+            index_obj, property_name=property_name, value=value, operator=operator
+        )
 
     @mcp.tool()
     def get_classification(global_id: str, file_path: str | None = None) -> dict[str, Any]:
@@ -273,6 +301,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return analysis.get_classification(index_obj, global_id)
 
     @mcp.tool()
@@ -281,6 +310,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return analysis.get_type_info(index_obj, global_id)
 
     @mcp.tool()
@@ -289,14 +319,18 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return meta.get_model_summary(index_obj)
 
     @mcp.tool()
-    def list_property_sets(ifc_class: str | None = None, file_path: str | None = None) -> dict[str, Any]:
+    def list_property_sets(
+        ifc_class: str | None = None, file_path: str | None = None
+    ) -> dict[str, Any]:
         """List pset names with occurrence counts for active or provided file_path."""
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         return meta.list_property_sets(index_obj, ifc_class=ifc_class)
 
     @mcp.tool()
@@ -305,6 +339,7 @@ def create_mcp_server(
         index_obj, err = _resolve_index(file_path)
         if err:
             return err
+        index_obj = cast(ModelIndex, index_obj)
         active_path = store.active_path
         effective_path = file_path or getattr(index_obj, "source_file", None)
         if effective_path is None and active_path and active_path != "<in-memory>":

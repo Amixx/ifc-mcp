@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ifc_mcp.core.index import ModelIndex
 from ifc_mcp.core.pipeline import load_model_artifacts

@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
 from ifc_mcp.core.index import build_index
 from ifc_mcp.core.parser import parse_ifc
 from ifc_mcp.core.scene import build_scene_model
-from ifc_mcp.core.types import EntityRecord, MaterialComponent, ParsedModel, SceneElement, SceneModel
+from ifc_mcp.core.types import (
+    EntityRecord,
+    MaterialComponent,
+    ParsedModel,
+    SceneElement,
+    SceneModel,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")
@@ -74,7 +76,9 @@ def synthetic_index_factory():
             name="Test Wall",
             property_sets={"Pset_WallCommon": {"IsExternal": True}},
             spatial_container="SPACE1" if with_space else None,
-            materials=[MaterialComponent(name="Concrete", thickness=200.0)] if with_material else [],
+            materials=[MaterialComponent(name="Concrete", thickness=200.0)]
+            if with_material
+            else [],
             geometry_bounds={"min": [0.0, 0.0, 0.0], "max": [1.0, 0.2, 3.0]},
         )
 
@@ -142,7 +146,12 @@ def synthetic_index_factory():
                 child_guids=[],
             )
 
-        parsed = ParsedModel(metadata={"schema": "IFC4"}, entities=entities, relationships=relationships, duplicate_guids=[])
+        parsed = ParsedModel(
+            metadata={"schema": "IFC4"},
+            entities=entities,
+            relationships=relationships,
+            duplicate_guids=[],
+        )
         scene = SceneModel(
             elements=scene_elements,
             spatial_tree={

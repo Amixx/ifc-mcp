@@ -8,8 +8,14 @@ from collections import defaultdict
 from dataclasses import asdict
 from typing import Any
 
-from .types import EntityRecord, ParsedModel, SceneElement, SceneModel
-
+from .types import (
+    AggregationGraph,
+    EntityRecord,
+    HostingGraph,
+    ParsedModel,
+    SceneElement,
+    SceneModel,
+)
 
 _CLASS_CATEGORY = {
     "IfcWall": "wall",
@@ -118,7 +124,7 @@ def human_class(ifc_class: str) -> str:
 def _build_hosting_graph(
     relationships: dict[str, Any],
     entities: dict[str, EntityRecord],
-) -> dict[str, dict[str, str] | dict[str, list[str]]]:
+) -> HostingGraph:
     """Resolve wall -> opening -> door/window into direct host mappings."""
     opening_to_wall: dict[str, str] = {}
     for relation in relationships.get("voids", []):
@@ -147,7 +153,9 @@ def _build_hosting_graph(
     }
 
 
-def _build_aggregation_graph(relationships: dict[str, Any], entities: dict[str, EntityRecord]) -> dict[str, Any]:
+def _build_aggregation_graph(
+    relationships: dict[str, Any], entities: dict[str, EntityRecord]
+) -> AggregationGraph:
     """Build parent/child aggregation lookups from IfcRelAggregates."""
     parent_to_children: dict[str, list[str]] = defaultdict(list)
     child_to_parent: dict[str, str] = {}
@@ -200,8 +208,13 @@ def _build_spatial_tree(parsed: ParsedModel) -> tuple[dict[str, Any], dict[str, 
         if container_guid not in nodes:
             continue
         for guid in relation.get("element_guids", []):
-            entity = entities.get(guid)
-            if entity and entity.ifc_class == "IfcSpace" and guid in nodes and guid not in nodes[container_guid]["children"]:
+            contained_entity = entities.get(guid)
+            if (
+                contained_entity
+                and contained_entity.ifc_class == "IfcSpace"
+                and guid in nodes
+                and guid not in nodes[container_guid]["children"]
+            ):
                 nodes[container_guid]["children"].append(guid)
                 parent_map[guid] = container_guid
 
@@ -211,8 +224,8 @@ def _build_spatial_tree(parsed: ParsedModel) -> tuple[dict[str, Any], dict[str, 
         if container_guid not in nodes:
             continue
         for guid in relation.get("element_guids", []):
-            entity = entities.get(guid)
-            if not entity or entity.ifc_class in _SPATIAL_CLASSES:
+            contained_entity = entities.get(guid)
+            if not contained_entity or contained_entity.ifc_class in _SPATIAL_CLASSES:
                 continue
             direct_elements_by_spatial[container_guid].add(guid)
 
@@ -224,7 +237,9 @@ def _build_spatial_tree(parsed: ParsedModel) -> tuple[dict[str, Any], dict[str, 
         return count
 
     roots = [
-        guid for guid, node in nodes.items() if node["ifc_class"] == "IfcSite" and guid not in parent_map
+        guid
+        for guid, node in nodes.items()
+        if node["ifc_class"] == "IfcSite" and guid not in parent_map
     ]
     if not roots:
         roots = [guid for guid in nodes if guid not in parent_map]
@@ -330,7 +345,7 @@ def _humanize_product_name(name: str) -> str | None:
 
 def _is_external(entity: EntityRecord) -> bool | None:
     """Determine whether element is exterior from psets or name heuristics."""
-    for _, props in entity.property_sets.items():
+    for props in entity.property_sets.values():
         if "IsExternal" in props:
             return bool(props["IsExternal"])
 
@@ -440,6 +455,7 @@ def _coerce_parsed_model(parsed: ParsedModel | dict[str, Any]) -> ParsedModel:
     for guid, payload in parsed.get("entities", {}).items():
         entities[guid] = EntityRecord(
             global_id=guid,
+            express_id=payload.get("express_id"),
             ifc_class=payload.get("ifc_class", "Unknown"),
             name=payload.get("name"),
             attributes=payload.get("attributes", {}),

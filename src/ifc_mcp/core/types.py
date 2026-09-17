@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
-
+from typing import Any, TypedDict
 
 JSONDict = dict[str, Any]
+
+
+class HostingGraph(TypedDict):
+    """Resolved direct host relationships."""
+
+    element_to_host: dict[str, str]
+    host_to_elements: dict[str, list[str]]
+
+
+class AggregationGraph(TypedDict):
+    """Resolved aggregate parent and child relationships."""
+
+    parent_to_children: dict[str, list[str]]
+    child_to_parent: dict[str, str]
 
 
 @dataclass(slots=True)
@@ -53,7 +66,7 @@ class ParsedModel:
 
     metadata: JSONDict
     entities: dict[str, EntityRecord]
-    relationships: dict[str, list[JSONDict] | dict[str, list[str]]]
+    relationships: dict[str, Any]
     duplicate_guids: list[str] = field(default_factory=list)
 
 

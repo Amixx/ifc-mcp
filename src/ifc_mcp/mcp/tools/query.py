@@ -186,7 +186,9 @@ def _normalize_requirements(
     return [{"name": name, "aliases": [name]} for name in property_names or []]
 
 
-def _find_requirement_match(property_sets: dict[str, dict[str, Any]], requirement: dict[str, Any]) -> str | None:
+def _find_requirement_match(
+    property_sets: dict[str, dict[str, Any]], requirement: dict[str, Any]
+) -> str | None:
     aliases = [alias.casefold() for alias in requirement["aliases"]]
     for props in property_sets.values():
         for key in props:
@@ -195,7 +197,9 @@ def _find_requirement_match(property_sets: dict[str, dict[str, Any]], requiremen
     return None
 
 
-def _find_property_values(property_sets: dict[str, dict[str, Any]], property_name: str) -> list[Any]:
+def _find_property_values(
+    property_sets: dict[str, dict[str, Any]], property_name: str
+) -> list[Any]:
     values = []
     needle = property_name.casefold()
     for props in property_sets.values():

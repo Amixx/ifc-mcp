@@ -94,9 +94,7 @@ def simplify_ifc(
     try:
         import open3d as o3d
     except ImportError as error:
-        raise ImportError(
-            "simplify_ifc requires Open3D: pip install ifc-mcp[simplify]"
-        ) from error
+        raise ImportError("simplify_ifc requires Open3D: pip install ifc-mcp[simplify]") from error
 
     import time
 
@@ -237,7 +235,9 @@ def _make_ifc_faces(ifc: Any, verts: np.ndarray, faces: np.ndarray) -> list[Any]
     points = [ifc.createIfcCartesianPoint(tuple(float(x) for x in v)) for v in verts]
     result = []
     for triangle in faces:
-        loop = ifc.createIfcPolyLoop([points[triangle[0]], points[triangle[1]], points[triangle[2]]])
+        loop = ifc.createIfcPolyLoop(
+            [points[triangle[0]], points[triangle[1]], points[triangle[2]]]
+        )
         bound = ifc.createIfcFaceOuterBound(loop, True)
         result.append(ifc.createIfcFace([bound]))
     return result
@@ -271,4 +271,6 @@ def _collect_safely_droppable_old_ids(lines: list[str], old_ids: set[int]) -> se
                 reachable.add(ref)
                 stack.append(ref)
 
-    return {entity_id for entity_id in old_ids if entity_id in all_ids and entity_id not in reachable}
+    return {
+        entity_id for entity_id in old_ids if entity_id in all_ids and entity_id not in reachable
+    }

@@ -33,7 +33,11 @@ def test_lint_respects_config_override(tmp_path, residential_ifc):
     cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
 
     result = lint_ifc_model(str(residential_ifc), str(cfg_path))
-    severities = {row["severity"] for row in result["results"] if row["rule_id"] == "require-material-assignment"}
+    severities = {
+        row["severity"]
+        for row in result["results"]
+        if row["rule_id"] == "require-material-assignment"
+    }
     if severities:
         assert severities == {"error"}
 

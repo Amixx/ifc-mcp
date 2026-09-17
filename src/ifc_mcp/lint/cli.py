@@ -13,8 +13,19 @@ from ifc_mcp.lint.engine import lint_ifc_model
 
 @click.command("lint")
 @click.argument("file_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--config", "config_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None)
-@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", show_default=True)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+)
 @click.option("--quiet", is_flag=True, help="Suppress progress output.")
 @click.option("--verbose", is_flag=True, help="Show detailed progress, timing, and memory stats.")
 @click.option("--with-geometry", is_flag=True, help="Enable eager geometry extraction (slower).")

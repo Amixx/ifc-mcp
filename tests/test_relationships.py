@@ -141,9 +141,7 @@ def test_classify_elements_by_relation_synthetic(synthetic_relationship_index):
         "investigate_count": 1,
         "excluded_count": 0,
     }
-    categories = {
-        row["global_id"]: row["relation_category"] for row in result["elements"]
-    }
+    categories = {row["global_id"]: row["relation_category"] for row in result["elements"]}
     assert categories["CURTAIN1"] == "parent"
     assert categories["MULLION1"] == "child"
     assert categories["MULLION2"] == "child"
@@ -156,9 +154,7 @@ def test_get_aggregate_relationships_synthetic(synthetic_relationship_index):
 
     assert result["stats"] == {"parent_count": 1, "child_count": 3}
     assert list(result["parents"]) == ["CURTAIN1"]
-    assert [
-        child["global_id"] for child in result["parents"]["CURTAIN1"]["children"]
-    ] == [
+    assert [child["global_id"] for child in result["parents"]["CURTAIN1"]["children"]] == [
         "MULLION1",
         "MULLION2",
         "MULLION3",
@@ -197,10 +193,7 @@ def test_relationship_tools_exclude_classes(synthetic_relationship_index):
 
 def test_relationship_tools_real_fixture_regression(model_index):
     expected_path = (
-        Path(__file__).parent
-        / "data"
-        / "relationships"
-        / "building_architecture.expected.json"
+        Path(__file__).parent / "data" / "relationships" / "building_architecture.expected.json"
     )
     expected = json.loads(expected_path.read_text())
 
@@ -216,9 +209,7 @@ def test_relationship_tools_real_fixture_regression(model_index):
     assert actual == expected
 
 
-def test_model_store_file_path_resolution_and_missing_file(
-    residential_ifc, monkeypatch
-):
+def test_model_store_file_path_resolution_and_missing_file(residential_ifc, monkeypatch):
     monkeypatch.setattr(model_store, "_LAST_LOADED_PATH", None)
     monkeypatch.setattr(model_store, "_LAST_LOADED_WITH_GEOMETRY", False)
     store = ModelStore()
@@ -258,9 +249,7 @@ def spatial_container_index():
         "SLAB1": ("IfcSlab", "Orphan Slab"),
     }
     entities = {
-        guid: EntityRecord(
-            global_id=guid, express_id=index, ifc_class=ifc_class, name=name
-        )
+        guid: EntityRecord(global_id=guid, express_id=index, ifc_class=ifc_class, name=name)
         for index, (guid, (ifc_class, name)) in enumerate(classes.items(), start=1)
     }
     relationships_payload = {

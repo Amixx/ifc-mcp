@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 from typing import Any, TextIO
 
 import click
@@ -13,7 +13,9 @@ import click
 class CliProgressReporter:
     """Emit parser/pipeline progress events to stderr."""
 
-    def __init__(self, enabled: bool = True, verbose: bool = False, stream: TextIO | None = None) -> None:
+    def __init__(
+        self, enabled: bool = True, verbose: bool = False, stream: TextIO | None = None
+    ) -> None:
         self.enabled = bool(enabled or verbose)
         self.verbose = verbose
         self.stream = stream or sys.stderr
@@ -123,5 +125,5 @@ def _rss_mb_str() -> str | None:
         else:
             rss_mb = rss / 1024
         return f"{rss_mb:.1f}MB"
-    except Exception:  # pragma: no cover - platform dependent
+    except (ImportError, OSError, TypeError, ValueError):  # pragma: no cover - platform dependent
         return None

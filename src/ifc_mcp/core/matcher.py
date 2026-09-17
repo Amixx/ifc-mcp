@@ -81,22 +81,31 @@ def match_entities(old: dict, new: dict) -> dict:
 
     # Stage 1: exact unique base signature matches
     _match_by_signature(
-        old_features, new_features,
-        used_old, used_new, old_to_new,
+        old_features,
+        new_features,
+        used_old,
+        used_new,
+        old_to_new,
         use_position=False,
     )
 
     # Stage 2: resolve duplicate buckets with positional disambiguation
     _match_by_signature(
-        old_features, new_features,
-        used_old, used_new, old_to_new,
+        old_features,
+        new_features,
+        used_old,
+        used_new,
+        old_to_new,
         use_position=True,
     )
 
     # Stage 3: fuzzy scoring for remaining candidates
     _match_fuzzy(
-        old_features, new_features,
-        used_old, used_new, old_to_new,
+        old_features,
+        new_features,
+        used_old,
+        used_new,
+        old_to_new,
     )
 
     return {
@@ -109,6 +118,7 @@ def match_entities(old: dict, new: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Feature extraction
 # ---------------------------------------------------------------------------
+
 
 def _build_features(entity: dict) -> dict:
     """Extract normalized matching features from a parsed entity."""
@@ -145,16 +155,29 @@ def _build_features(entity: dict) -> dict:
         "groups": groups,
         "stable_props": stable_props,
         "props_digest": props_digest,
-        "tx": tx, "ty": ty, "tz": tz,
+        "tx": tx,
+        "ty": ty,
+        "tz": tz,
         "discriminators": discriminators,
     }
 
 
-_VOLATILE_KEYS = frozenset({
-    "id", "guid", "globalid", "ownerhistory", "history",
-    "created", "modified", "timestamp", "application",
-    "creationdate", "lastmodifieddate", "changeaction",
-})
+_VOLATILE_KEYS = frozenset(
+    {
+        "id",
+        "guid",
+        "globalid",
+        "ownerhistory",
+        "history",
+        "created",
+        "modified",
+        "timestamp",
+        "application",
+        "creationdate",
+        "lastmodifieddate",
+        "changeaction",
+    }
+)
 
 
 def _extract_stable_props(entity: dict) -> frozenset:
@@ -211,12 +234,13 @@ def _norm_value(v):
 def _hash_props(props: frozenset) -> str:
     """Deterministic hash of a property set for fast comparison."""
     canonical = json.dumps(sorted((k, str(v)) for k, v in props), sort_keys=True)
-    return hashlib.md5(canonical.encode()).hexdigest()
+    return hashlib.md5(canonical.encode(), usedforsecurity=False).hexdigest()
 
 
 # ---------------------------------------------------------------------------
 # Stage 1 & 2: Signature-based matching
 # ---------------------------------------------------------------------------
+
 
 def _base_signature(feat: dict) -> tuple:
     return (
@@ -269,10 +293,9 @@ def _match_by_signature(
         sig = sig_fn(feat)
         new_buckets[sig].append(guid)
 
-    for sig in old_buckets:
+    for sig, old_guids in old_buckets.items():
         if sig not in new_buckets:
             continue
-        old_guids = old_buckets[sig]
         new_guids = new_buckets[sig]
         if len(old_guids) == 1 and len(new_guids) == 1:
             og, ng = old_guids[0], new_guids[0]
@@ -284,6 +307,7 @@ def _match_by_signature(
 # ---------------------------------------------------------------------------
 # Stage 3: Fuzzy scoring
 # ---------------------------------------------------------------------------
+
 
 def _match_fuzzy(
     old_features: dict[str, dict],
@@ -311,10 +335,10 @@ def _match_fuzzy(
     # Score all same-class pairs
     candidates: list[tuple[float, str, str]] = []  # (score, old_guid, new_guid)
 
-    for cls in old_by_class:
+    for cls, old_features_for_class in old_by_class.items():
         if cls not in new_by_class:
             continue
-        for og, of in old_by_class[cls]:
+        for og, of in old_features_for_class:
             scores_for_og = []
             for ng, nf in new_by_class[cls]:
                 s = _score_pair(of, nf)
@@ -337,7 +361,7 @@ def _match_fuzzy(
 
     # Greedy assignment by descending score
     candidates.sort(reverse=True)
-    for score, og, ng in candidates:
+    for _score, og, ng in candidates:
         if og in used_old or ng in used_new:
             continue
         old_to_new[og] = ng
@@ -379,9 +403,7 @@ def _score_pair(of: dict, nf: dict) -> float:
     # Placement proximity (0.30)
     if of["tx"] is not None and nf["tx"] is not None:
         dist = math.sqrt(
-            (of["tx"] - nf["tx"]) ** 2
-            + (of["ty"] - nf["ty"]) ** 2
-            + (of["tz"] - nf["tz"]) ** 2
+            (of["tx"] - nf["tx"]) ** 2 + (of["ty"] - nf["ty"]) ** 2 + (of["tz"] - nf["tz"]) ** 2
         )
         # Distances in mm: <100mm=1.0, <1000mm=0.5, >5000mm=0.0
         if dist < 100:

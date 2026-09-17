@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
-from ifc_mcp.core.index import ModelIndex, SPATIAL_CLASSES
+from ifc_mcp.core.index import SPATIAL_CLASSES, ModelIndex
 from ifc_mcp.core.relationships import (
     build_aggregate_map,
     build_storey_containment_map,

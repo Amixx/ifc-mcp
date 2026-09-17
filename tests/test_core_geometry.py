@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import ifcopenshell
 
-from ifc_mcp.core.geometry import extract_element_bounds_batch, extract_element_meshes_batch
+from ifc_mcp.core.geometry import (
+    extract_element_bounds_batch,
+    extract_element_meshes_batch,
+)
 
 
 def test_batch_bounds_uses_parametric_swept_solid_before_tessellation() -> None:
@@ -133,15 +136,11 @@ def test_mesh_batch_exclude_openings_drops_opening_products_and_boolean_cuts() -
     }
 
     cut = extract_element_meshes_batch(ifc, threads=1, include_guids=guids)
-    uncut = extract_element_meshes_batch(
-        ifc, threads=1, include_guids=guids, exclude_openings=True
-    )
+    uncut = extract_element_meshes_batch(ifc, threads=1, include_guids=guids, exclude_openings=True)
 
     assert any(row["ifc_class"] == "IfcOpeningElement" for row in cut.instances)
     assert {row["global_id"] for row in uncut.instances} == {voided_wall.GlobalId}
-    assert all(
-        row["ifc_class"] != "IfcOpeningElement" for row in uncut.diagnostics
-    )
+    assert all(row["ifc_class"] != "IfcOpeningElement" for row in uncut.diagnostics)
 
     def wall_triangles(result) -> int:
         row = next(r for r in result.instances if r["global_id"] == voided_wall.GlobalId)

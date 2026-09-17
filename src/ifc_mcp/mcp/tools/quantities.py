@@ -7,7 +7,6 @@ from typing import Any
 
 from ifc_mcp.core.index import ModelIndex
 
-
 _AREA_KEYS = ["NetSideArea", "NetArea", "GrossArea", "Area"]
 _VOLUME_KEYS = ["NetVolume", "GrossVolume", "Volume"]
 _LENGTH_KEYS = ["Length", "NetLength", "GrossLength", "Perimeter"]
@@ -131,8 +130,16 @@ def get_space_summary(index: ModelIndex, floor: str | None = None) -> dict[str, 
         if floor_filter and floor_filter not in (scene_floor or "").casefold():
             continue
 
-        area = _quantity(entity, _AREA_KEYS) or _quantity_from_pset(entity, "Pset_SpaceCommon", ["NetArea", "GrossArea"]) or 0.0
-        volume = _quantity(entity, _VOLUME_KEYS) or _quantity_from_pset(entity, "Pset_SpaceCommon", ["NetVolume", "GrossVolume"]) or 0.0
+        area = (
+            _quantity(entity, _AREA_KEYS)
+            or _quantity_from_pset(entity, "Pset_SpaceCommon", ["NetArea", "GrossArea"])
+            or 0.0
+        )
+        volume = (
+            _quantity(entity, _VOLUME_KEYS)
+            or _quantity_from_pset(entity, "Pset_SpaceCommon", ["NetVolume", "GrossVolume"])
+            or 0.0
+        )
 
         spaces.append(
             {
@@ -150,7 +157,7 @@ def get_space_summary(index: ModelIndex, floor: str | None = None) -> dict[str, 
 
 
 def _quantity(entity, keys: list[str]) -> float | None:
-    for _, props in entity.property_sets.items():
+    for props in entity.property_sets.values():
         for key in keys:
             value = props.get(key)
             if isinstance(value, (int, float)):

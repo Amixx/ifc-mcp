@@ -25,7 +25,7 @@ def test_parse_without_geometry_skips_bounds(residential_ifc):
 
 
 def test_parse_with_geometry_produces_bounds(residential_ifc):
-    """parse_ifc(extract_geometry=True) populates geometry_bounds on entities with representations."""
+    """Geometry parsing populates bounds on represented entities."""
     parsed = parse_ifc(str(residential_ifc), extract_geometry=True)
     assert parsed.entities
     has_bounds = sum(1 for e in parsed.entities.values() if e.geometry_bounds is not None)

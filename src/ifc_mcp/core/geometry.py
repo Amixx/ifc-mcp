@@ -56,12 +56,12 @@ def extract_element_bounds(file_path: str, global_id: str) -> dict[str, list[flo
     """Compute geometry bounds for one element by GlobalId from IFC file."""
     try:
         ifc = ifcopenshell.open(file_path)
-    except Exception:
+    except (OSError, RuntimeError):
         return None
 
     try:
         element = ifc.by_guid(global_id)
-    except Exception:
+    except RuntimeError:
         element = None
     if element is None:
         return None
@@ -269,7 +269,7 @@ def extract_element_meshes_batch(
                     break
                 if not iterator.next():
                     break
-    except Exception:
+    except RuntimeError:
         pass
 
     instanced_guids = {row["global_id"] for row in instances}
@@ -315,9 +315,9 @@ def _extract_bounds_from_shape(element: Any) -> dict[str, list[float]] | None:
         settings.set("use-world-coords", True)
         settings.set("disable-opening-subtractions", True)
         settings.set("keep-bounding-boxes", True)
-        shape = ifcopenshell.geom.create_shape(settings, element)
+        shape: Any = ifcopenshell.geom.create_shape(settings, element)
         vertices = list(getattr(shape.geometry, "verts", []) or [])
-    except Exception:
+    except RuntimeError:
         return None
 
     if not vertices:
@@ -343,7 +343,7 @@ def _extract_bounds_from_placement(element: Any) -> dict[str, list[float]] | Non
 
     try:
         matrix = ifcopenshell.util.placement.get_local_placement(placement)
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError):
         return None
 
     x, y, z = float(matrix[0][3]), float(matrix[1][3]), float(matrix[2][3])
@@ -421,7 +421,7 @@ def _extract_bounds_with_iterator(
 def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, list[float]] | None:
     try:
         element_matrix = ifcopenshell.util.placement.get_local_placement(element.ObjectPlacement)
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError):
         return None
 
     collected: list[dict[str, list[float]]] = []
@@ -447,7 +447,9 @@ def _extract_item_bounds(item: Any, parent_matrix: Any) -> dict[str, list[float]
 
     if item.is_a("IfcMappedItem"):
         mapped_matrix = _matrix_multiply(parent_matrix, _mapped_item_matrix(item))
-        mapped_representation = getattr(getattr(item, "MappingSource", None), "MappedRepresentation", None)
+        mapped_representation = getattr(
+            getattr(item, "MappingSource", None), "MappedRepresentation", None
+        )
         child_bounds = [
             bounds
             for child in getattr(mapped_representation, "Items", []) or []
@@ -467,8 +469,12 @@ def _extract_extruded_area_solid_bounds(
 
     depth = float(getattr(item, "Depth", 0.0) or 0.0)
     direction = _direction_ratios(getattr(item, "ExtrudedDirection", None), default=(0.0, 0.0, 1.0))
-    item_matrix = _matrix_multiply(parent_matrix, _axis2placement_matrix(getattr(item, "Position", None)))
-    profile_matrix = _axis2placement_matrix(getattr(getattr(item, "SweptArea", None), "Position", None))
+    item_matrix = _matrix_multiply(
+        parent_matrix, _axis2placement_matrix(getattr(item, "Position", None))
+    )
+    profile_matrix = _axis2placement_matrix(
+        getattr(getattr(item, "SweptArea", None), "Position", None)
+    )
     item_matrix = _matrix_multiply(item_matrix, profile_matrix)
     points: list[tuple[float, float, float]] = []
     for x, y in profile_points:
@@ -524,7 +530,7 @@ def _axis2placement_matrix(placement: Any) -> list[list[float]]:
         return _identity_matrix()
     try:
         return ifcopenshell.util.placement.get_axis2placement(placement).tolist()
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError):
         return _identity_matrix()
 
 
@@ -545,7 +551,9 @@ def _cartesian_transformation_operator_matrix(operator: Any) -> list[list[float]
     ]
 
 
-def _direction_ratios(direction: Any, *, default: tuple[float, float, float]) -> tuple[float, float, float]:
+def _direction_ratios(
+    direction: Any, *, default: tuple[float, float, float]
+) -> tuple[float, float, float]:
     ratios = list(getattr(direction, "DirectionRatios", []) or [])
     if not ratios:
         return default
@@ -609,14 +617,25 @@ def _invert_rigid_matrix(matrix: Any) -> list[list[float]]:
 def _transform_point(matrix: Any, point: tuple[float, float, float]) -> tuple[float, float, float]:
     x, y, z = point
     return (
-        float(matrix[0][0]) * x + float(matrix[0][1]) * y + float(matrix[0][2]) * z + float(matrix[0][3]),
-        float(matrix[1][0]) * x + float(matrix[1][1]) * y + float(matrix[1][2]) * z + float(matrix[1][3]),
-        float(matrix[2][0]) * x + float(matrix[2][1]) * y + float(matrix[2][2]) * z + float(matrix[2][3]),
+        float(matrix[0][0]) * x
+        + float(matrix[0][1]) * y
+        + float(matrix[0][2]) * z
+        + float(matrix[0][3]),
+        float(matrix[1][0]) * x
+        + float(matrix[1][1]) * y
+        + float(matrix[1][2]) * z
+        + float(matrix[1][3]),
+        float(matrix[2][0]) * x
+        + float(matrix[2][1]) * y
+        + float(matrix[2][2]) * z
+        + float(matrix[2][3]),
     )
 
 
 def _bounds_from_vertices(vertices: list[float]) -> dict[str, list[float]]:
-    return _bounds_from_points(list(zip(vertices[0::3], vertices[1::3], vertices[2::3], strict=False)))
+    return _bounds_from_points(
+        list(zip(vertices[0::3], vertices[1::3], vertices[2::3], strict=False))
+    )
 
 
 def _bounds_from_points(points: list[tuple[float, float, float]]) -> dict[str, list[float]]:

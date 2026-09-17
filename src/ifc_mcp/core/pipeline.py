@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ifc_mcp.core.index import ModelIndex, build_index
 from ifc_mcp.core.parser import parse_ifc_with_model
@@ -34,7 +35,10 @@ def load_model_artifacts_with_ifc(
 ) -> tuple[ParsedModel, SceneModel, ModelIndex, Any]:
     """Load one IFC file and return artifacts plus the opened IfcOpenShell model."""
     started_at = time.monotonic()
-    _emit(progress_callback, {"stage": "pipeline", "message": "Starting model pipeline", "file_path": file_path})
+    _emit(
+        progress_callback,
+        {"stage": "pipeline", "message": "Starting model pipeline", "file_path": file_path},
+    )
 
     parsed, ifc = parse_ifc_with_model(
         file_path,
@@ -43,7 +47,10 @@ def load_model_artifacts_with_ifc(
     )
 
     scene_started_at = time.monotonic()
-    _emit(progress_callback, {"stage": "scene", "message": "Building scene model", "file_path": file_path})
+    _emit(
+        progress_callback,
+        {"stage": "scene", "message": "Building scene model", "file_path": file_path},
+    )
     scene = build_scene_model(parsed)
     _emit(
         progress_callback,
@@ -56,7 +63,10 @@ def load_model_artifacts_with_ifc(
     )
 
     index_started_at = time.monotonic()
-    _emit(progress_callback, {"stage": "index", "message": "Building lookup index", "file_path": file_path})
+    _emit(
+        progress_callback,
+        {"stage": "index", "message": "Building lookup index", "file_path": file_path},
+    )
     index = build_index(
         parsed,
         scene,

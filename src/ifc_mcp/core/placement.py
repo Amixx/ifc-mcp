@@ -32,8 +32,6 @@ def describe_placement_change(
     dz = new_pos[2] - old_pos[2]
 
     dist_h = math.sqrt(dx * dx + dy * dy)
-    dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
-
     parts = []
 
     # Distance and compass direction (horizontal plane)
@@ -66,7 +64,7 @@ def describe_placement_change(
 def describe_position(matrix: list[list[float]]) -> str:
     """Describe a position in human terms (for added/deleted entities)."""
     pos = _extract_position(matrix)
-    return f"at ({pos[0]/1000:.1f}, {pos[1]/1000:.1f}, {pos[2]/1000:.1f})m"
+    return f"at ({pos[0] / 1000:.1f}, {pos[1] / 1000:.1f}, {pos[2] / 1000:.1f})m"
 
 
 def _extract_position(matrix: list[list[float]]) -> tuple[float, float, float]:
@@ -94,8 +92,16 @@ def _compass_direction(dx: float, dy: float) -> str:
         angle += 360
 
     # 8-point compass: N, NE, E, SE, S, SW, W, NW
-    directions = ["north", "northeast", "east", "southeast",
-                  "south", "southwest", "west", "northwest"]
+    directions = [
+        "north",
+        "northeast",
+        "east",
+        "southeast",
+        "south",
+        "southwest",
+        "west",
+        "northwest",
+    ]
     idx = round(angle / 45) % 8
     return directions[idx]
 
@@ -114,7 +120,7 @@ def _nearest_named(
     best_name = None
     best_dist = float("inf")
 
-    for guid, ent in entities.items():
+    for ent in entities.values():
         name = ent.get("name")
         if not name or _AUTOGEN_NAME.match(name):
             continue
@@ -125,11 +131,11 @@ def _nearest_named(
 
         # Skip if this is at the same position as the entity we're describing
         if exclude_pos:
-            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(epos, exclude_pos)))
+            d = math.sqrt(sum((a - b) ** 2 for a, b in zip(epos, exclude_pos, strict=False)))
             if d < min_dist:
                 continue
 
-        d = math.sqrt(sum((a - b) ** 2 for a, b in zip(pos, epos)))
+        d = math.sqrt(sum((a - b) ** 2 for a, b in zip(pos, epos, strict=False)))
         if d < best_dist:
             best_dist = d
             best_name = name

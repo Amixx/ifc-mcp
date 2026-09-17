@@ -84,9 +84,7 @@ def element_property_set_occurrences(element: Any) -> list[PropertySetOccurrence
     return occurrences
 
 
-def iter_quantity_values(
-    ifc: Any, entity_type: str = "IfcElement"
-) -> Iterator[QuantityValue]:
+def iter_quantity_values(ifc: Any, entity_type: str = "IfcElement") -> Iterator[QuantityValue]:
     """Yield supported simple quantities with unit provenance and SI values."""
     for element in ifc.by_type(entity_type):
         global_id = getattr(element, "GlobalId", None)
@@ -124,16 +122,12 @@ def iter_quantity_values(
                         )
                     ),
                     unit_symbol=ifcopenshell.util.unit.get_unit_symbol(unit),
-                    unit_source=(
-                        "explicit" if getattr(quantity, "Unit", None) else "project"
-                    ),
+                    unit_source=("explicit" if getattr(quantity, "Unit", None) else "project"),
                     inherited=inherited,
                 )
 
 
-_QUANTITY_VALUE_ATTRIBUTES: dict[
-    str, tuple[Literal["length", "area", "volume"], str, str]
-] = {
+_QUANTITY_VALUE_ATTRIBUTES: dict[str, tuple[Literal["length", "area", "volume"], str, str]] = {
     "IfcQuantityLength": ("length", "LengthValue", "METRE"),
     "IfcQuantityArea": ("area", "AreaValue", "SQUARE_METRE"),
     "IfcQuantityVolume": ("volume", "VolumeValue", "CUBIC_METRE"),
@@ -201,9 +195,7 @@ def _to_occurrence(
         kind=kind,
         inherited=inherited,
         property_names=tuple(str(member.Name) for member in named),
-        populated_property_names=tuple(
-            str(member.Name) for member in named if _has_value(member)
-        ),
+        populated_property_names=tuple(str(member.Name) for member in named if _has_value(member)),
     )
 
 

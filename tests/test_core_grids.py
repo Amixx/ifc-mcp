@@ -12,7 +12,9 @@ from ifc_mcp.core import grids as grid_module
 
 
 def test_get_grid_extents_transforms_polyline_points(monkeypatch: Any) -> None:
-    monkeypatch.setattr(grid_module.ifcopenshell.util.unit, "calculate_unit_scale", lambda _ifc: 0.001)
+    monkeypatch.setattr(
+        grid_module.ifcopenshell.util.unit, "calculate_unit_scale", lambda _ifc: 0.001
+    )
     monkeypatch.setattr(
         grid_module.ifcopenshell.util.placement,
         "get_local_placement",
@@ -27,9 +29,7 @@ def test_get_grid_extents_transforms_polyline_points(monkeypatch: Any) -> None:
         [
             FakeGrid(
                 GlobalId="grid-b",
-                UAxes=[
-                    FakeAxis(FakePolyline([FakePoint((0.0, 0.0)), FakePoint((10.0, 5.0))]))
-                ],
+                UAxes=[FakeAxis(FakePolyline([FakePoint((0.0, 0.0)), FakePoint((10.0, 5.0))]))],
                 VAxes=[FakeAxis(FakePolyline([FakePoint((-4.0, 8.0, 2.0))]))],
             ),
             FakeGrid(GlobalId="grid-a"),
@@ -68,7 +68,9 @@ def test_get_grid_axes_reads_every_axis_list() -> None:
         ]
     )
 
-    assert [(row["grid_global_id"], row["axis_set"], row["axis_tag"]) for row in get_grid_axes(ifc)] == [
+    assert [
+        (row["grid_global_id"], row["axis_set"], row["axis_tag"]) for row in get_grid_axes(ifc)
+    ] == [
         ("grid-b", "U", "A"),
         ("grid-b", "U", "B"),
         ("grid-b", "V", "1"),

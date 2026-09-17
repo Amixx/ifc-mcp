@@ -8,7 +8,6 @@ from typing import Any
 
 from .types import EntityRecord, ParsedModel, SceneElement, SceneModel
 
-
 SPATIAL_CLASSES = {"IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcSpace"}
 
 
@@ -172,9 +171,9 @@ def build_index(
         if not type_guid:
             continue
         for guid in relation.get("element_guids", []):
-            entity = entities.get(guid)
-            if entity:
-                type_map[type_guid].append(entity)
+            typed_entity = entities.get(guid)
+            if typed_entity:
+                type_map[type_guid].append(typed_entity)
 
     connected = _build_connected_map(parsed_model.relationships)
 
@@ -225,14 +224,16 @@ def _build_connected_map(relationships: dict[str, Any]) -> dict[str, list[dict[s
             continue
         for child in relation.get("element_guids", []):
             connected[container].append({"global_id": child, "relationship": "spatial_contains"})
-            connected[child].append({"global_id": container, "relationship": "spatially_contained_in"})
+            connected[child].append(
+                {"global_id": container, "relationship": "spatially_contained_in"}
+            )
 
     return dict(connected)
 
 
 def _extract_quantity(entity: EntityRecord, names: list[str]) -> float | None:
     """Find first numeric quantity from psets matching candidate names."""
-    for _, props in entity.property_sets.items():
+    for props in entity.property_sets.values():
         for name in names:
             value = props.get(name)
             if isinstance(value, (int, float)):
@@ -249,6 +250,7 @@ def _coerce_parsed_model(parsed: ParsedModel | dict[str, Any]) -> ParsedModel:
     for guid, payload in parsed.get("entities", {}).items():
         entities[guid] = EntityRecord(
             global_id=guid,
+            express_id=payload.get("express_id"),
             ifc_class=payload.get("ifc_class", "Unknown"),
             name=payload.get("name"),
             attributes=payload.get("attributes", {}),

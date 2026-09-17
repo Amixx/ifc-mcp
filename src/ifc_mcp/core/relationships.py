@@ -19,8 +19,7 @@ def _iter_containments(model: ModelIndex) -> Iterator[tuple[str, dict[str, Any]]
         container_info = {
             "global_id": container_guid,
             "ifc_class": container.ifc_class if container else None,
-            "name": relation.get("container_name")
-            or (container.name if container else None),
+            "name": relation.get("container_name") or (container.name if container else None),
         }
         for child_guid in relation.get("element_guids", []):
             yield child_guid, container_info
@@ -85,9 +84,7 @@ def get_element_storey_placements(model: ModelIndex, ifc: Any) -> list[dict[str,
         if not storeys:
             container = resolve_storey_for_element(model, guid)
             if container is not None:
-                storeys = [
-                    {"global_id": container["global_id"], "name": container.get("name")}
-                ]
+                storeys = [{"global_id": container["global_id"], "name": container.get("name")}]
         rows.append(
             {
                 "global_id": guid,
@@ -117,9 +114,7 @@ def build_storey_containment_map(
     return result
 
 
-def resolve_storey_for_element(
-    model: ModelIndex, global_id: str
-) -> dict[str, Any] | None:
+def resolve_storey_for_element(model: ModelIndex, global_id: str) -> dict[str, Any] | None:
     """Return the IfcBuildingStorey an element belongs to, walking the spatial hierarchy.
 
     ``build_storey_containment_map`` reports only the storey an element is *directly*
@@ -149,9 +144,7 @@ def resolve_storey_for_element(
         # containment is the element's own spatial assignment, aggregation only its whole's.
         if container and container.get("ifc_class") == "IfcBuildingStorey":
             return container
-        parent_guid = child_to_parent.get(guid) or (
-            container["global_id"] if container else None
-        )
+        parent_guid = child_to_parent.get(guid) or (container["global_id"] if container else None)
         storey = _storey_record(model, parent_guid)
         if storey is not None:
             return storey

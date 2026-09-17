@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
-from ifc_mcp.core.index import ModelIndex, SPATIAL_CLASSES
+from ifc_mcp.core.index import SPATIAL_CLASSES, ModelIndex
 from ifc_mcp.core.types import LintResult
-
 
 RULES = {
     "no-unnamed-elements": "Elements without a Name attribute",
@@ -208,7 +207,7 @@ def require_classification(index: ModelIndex) -> list[LintResult]:
 
 
 def _quantity(psets: dict[str, dict], keys: list[str]) -> float | None:
-    for _, props in psets.items():
+    for props in psets.values():
         for key in keys:
             value = props.get(key)
             if isinstance(value, (int, float)):

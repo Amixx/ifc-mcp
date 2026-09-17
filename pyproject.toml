@@ -32,6 +32,18 @@ dependencies = [
 # optional so importing ifc_mcp.core doesn't force that ceiling on every consumer, only ones
 # that actually call simplify_ifc.
 simplify = ["open3d>=0.18.0"]
+dev = [
+    "bandit>=1.8.0",
+    "build>=1.2.0",
+    "deptry>=0.23.0",
+    "mypy>=1.11.2",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.6.0",
+    "ruff>=0.11.13",
+    "twine>=6.0.0",
+    "vulture>=2.14",
+]
 
 [project.scripts]
 ifc-mcp = "ifc_mcp.cli:main"
@@ -43,3 +55,43 @@ Issues = "https://github.com/imants/ifc-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ifc_mcp"]
+
+[tool.uv]
+# Avoid resolving dependencies whose newest artifacts have not had time to be
+# observed by the wider ecosystem.
+exclude-newer = "7 days"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# These modules intentionally preserve the original public import path while
+# implementations live under mcp.tools.
+"src/ifc_mcp/tools/*.py" = ["F403"]
+
+[tool.mypy]
+# NumPy's current typed stubs use Python 3.12 type-alias syntax. Runtime
+# compatibility with 3.10 and 3.11 is covered by the CI test matrix.
+python_version = "3.12"
+packages = ["ifc_mcp"]
+mypy_path = "src"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_return_any = false
+
+[tool.vulture]
+paths = ["src", "tests", "scripts"]
+min_confidence = 100
+
+[tool.deptry]
+known_first_party = ["ifc_mcp"]
+optional_dependencies_dev_groups = ["dev"]
+
+[tool.pytest.ini_options]
+# Real IFC tessellation can exceed 90 seconds on the supported macOS build.
+addopts = "--timeout=180 --timeout-method=thread"
+timeout = 180

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-import ifc_mcp.mcp.model_store as model_store
+from ifc_mcp.mcp import model_store
 from ifc_mcp.mcp.model_store import ModelStore
 
 

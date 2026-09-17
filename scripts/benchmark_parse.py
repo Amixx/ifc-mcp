@@ -36,7 +36,9 @@ def benchmark(filepath: str) -> None:
     start = time.monotonic()
     parsed_with_geom = parse_ifc(str(path), extract_geometry=True)
     elapsed_with_geom = time.monotonic() - start
-    bounds_count = sum(1 for e in parsed_with_geom.entities.values() if e.geometry_bounds is not None)
+    bounds_count = sum(
+        1 for e in parsed_with_geom.entities.values() if e.geometry_bounds is not None
+    )
 
     speedup = elapsed_with_geom / elapsed_no_geom if elapsed_no_geom > 0 else float("inf")
 

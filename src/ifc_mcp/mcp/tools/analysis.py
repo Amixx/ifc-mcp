@@ -78,8 +78,7 @@ def get_type_info(index: ModelIndex, global_id: str) -> dict[str, Any]:
 
     type_entity = index.get_entity(type_guid)
     instances = [
-        index.basic_entity(instance.global_id)
-        for instance in index.type_map.get(type_guid, [])
+        index.basic_entity(instance.global_id) for instance in index.type_map.get(type_guid, [])
     ]
 
     return {
@@ -94,11 +93,13 @@ def get_type_info(index: ModelIndex, global_id: str) -> dict[str, Any]:
     }
 
 
-def _find_property_values(property_sets: dict[str, dict[str, Any]], property_name: str) -> list[Any]:
+def _find_property_values(
+    property_sets: dict[str, dict[str, Any]], property_name: str
+) -> list[Any]:
     """Collect all values for matching property name across psets."""
     values = []
     needle = property_name.casefold()
-    for _, props in property_sets.items():
+    for props in property_sets.values():
         for key, prop_value in props.items():
             if key.casefold() == needle:
                 values.append(prop_value)

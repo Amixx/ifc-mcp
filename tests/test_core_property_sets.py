@@ -90,15 +90,9 @@ def test_quantity_values_are_typed_and_normalized_from_project_units() -> None:
     ifc = ifcopenshell.file(schema="IFC4")
     project = ifc.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new())
     units = [
-        ifc.create_entity(
-            "IfcSIUnit", UnitType="LENGTHUNIT", Prefix="MILLI", Name="METRE"
-        ),
-        ifc.create_entity(
-            "IfcSIUnit", UnitType="AREAUNIT", Prefix="MILLI", Name="SQUARE_METRE"
-        ),
-        ifc.create_entity(
-            "IfcSIUnit", UnitType="VOLUMEUNIT", Prefix="MILLI", Name="CUBIC_METRE"
-        ),
+        ifc.create_entity("IfcSIUnit", UnitType="LENGTHUNIT", Prefix="MILLI", Name="METRE"),
+        ifc.create_entity("IfcSIUnit", UnitType="AREAUNIT", Prefix="MILLI", Name="SQUARE_METRE"),
+        ifc.create_entity("IfcSIUnit", UnitType="VOLUMEUNIT", Prefix="MILLI", Name="CUBIC_METRE"),
     ]
     project.UnitsInContext = ifc.create_entity("IfcUnitAssignment", Units=units)
     member = ifc.create_entity("IfcMember", GlobalId=ifcopenshell.guid.new())
@@ -108,9 +102,7 @@ def test_quantity_values_are_typed_and_normalized_from_project_units() -> None:
         Name="Qto_MemberBaseQuantities",
         Quantities=[
             ifc.create_entity("IfcQuantityLength", Name="Length", LengthValue=2000.0),
-            ifc.create_entity(
-                "IfcQuantityArea", Name="CrossSectionArea", AreaValue=500000.0
-            ),
+            ifc.create_entity("IfcQuantityArea", Name="CrossSectionArea", AreaValue=500000.0),
             ifc.create_entity("IfcQuantityVolume", Name="NetVolume", VolumeValue=1e9),
         ],
     )

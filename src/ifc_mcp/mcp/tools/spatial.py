@@ -42,16 +42,13 @@ def get_elements_in_space(index: ModelIndex, space_id: str) -> dict[str, Any]:
                     queue.append(child)
                 contained_guids.add(child)
 
-    results = [
-        basic
-        for guid in contained_guids
-        if (basic := index.basic_entity(guid)) is not None
-    ]
+    results = [basic for guid in contained_guids if (basic := index.basic_entity(guid)) is not None]
 
     results.sort(key=lambda row: (row.get("ifc_class") or "", row.get("name") or ""))
+    target = index.get_entity(target_guid)
     return {
         "space_id": target_guid,
-        "space_name": index.get_entity(target_guid).name if index.get_entity(target_guid) else None,
+        "space_name": target.name if target else None,
         "count": len(results),
         "results": results,
     }

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ifc_mcp.core.pipeline import load_model_artifacts
 
@@ -97,6 +98,9 @@ def _load_index_with_scope(
 ):
     scoped_callback: Callable[[dict[str, Any]], None] | None = None
     if progress_callback is not None:
-        scoped_callback = lambda event: progress_callback({**event, "scope": scope})
+
+        def scoped_callback(event):
+            return progress_callback({**event, "scope": scope})
+
     _, _, index = load_model_artifacts(file_path, progress_callback=scoped_callback)
     return index

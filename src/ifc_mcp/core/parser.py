@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
-import time
-from typing import Any, Callable
+from typing import Any
 
 import ifcopenshell
 import ifcopenshell.util.element
@@ -85,10 +86,9 @@ def parse_ifc_with_model(
 
     candidates = _iter_entity_candidates(ifc)
 
+    bounds_map: dict[str, dict[str, list[float]]] = {}
     if extract_geometry:
         bounds_map = _batch_extract_geometry_bounds(ifc, candidates, progress_callback, started_at)
-    else:
-        bounds_map: dict[str, dict[str, list[float]]] = {}
 
     total_candidates = len(candidates)
     _emit_progress(
@@ -223,7 +223,9 @@ def parse(filepath: str, extract_geometry: bool = True) -> dict[str, Any]:
     }
 
 
-def _emit_progress(callback: Callable[[dict[str, Any]], None] | None, event: dict[str, Any]) -> None:
+def _emit_progress(
+    callback: Callable[[dict[str, Any]], None] | None, event: dict[str, Any]
+) -> None:
     """Emit parser progress events when callback is configured."""
     if callback is not None:
         callback(event)
@@ -240,7 +242,9 @@ def _iter_entity_candidates(ifc) -> list[Any]:
     return list(entities.values())
 
 
-def _extract_structural_relationships(ifc) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, Any]]]:
+def _extract_structural_relationships(
+    ifc,
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, Any]]]:
     """Extract void/fill/aggregate relationships used by scene and tools."""
     voids: list[dict[str, str]] = []
     for rel in ifc.by_type("IfcRelVoidsElement"):
@@ -261,16 +265,16 @@ def _extract_structural_relationships(ifc) -> tuple[list[dict[str, str]], list[d
         parent = rel.RelatingObject
         if not hasattr(parent, "GlobalId"):
             continue
-        child_guids = [
-            obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")
-        ]
+        child_guids = [obj.GlobalId for obj in rel.RelatedObjects if hasattr(obj, "GlobalId")]
         if child_guids:
             aggregates.append({"parent_guid": parent.GlobalId, "child_guids": child_guids})
 
     return voids, fills, aggregates
 
 
-def _build_spatial_relationships(ifc) -> tuple[dict[str, list[str]], dict[str, str], list[dict[str, Any]]]:
+def _build_spatial_relationships(
+    ifc,
+) -> tuple[dict[str, list[str]], dict[str, str], list[dict[str, Any]]]:
     """Build spatial container relationships and element container lookup."""
     spatial_children: dict[str, list[str]] = defaultdict(list)
     container_map: dict[str, str] = {}
@@ -510,7 +514,9 @@ def _extract_from_layer_set(layer_set) -> list[MaterialComponent]:
         if not name:
             continue
         thickness = getattr(layer, "LayerThickness", None)
-        components.append(MaterialComponent(name=name, thickness=float(thickness) if thickness else None))
+        components.append(
+            MaterialComponent(name=name, thickness=float(thickness) if thickness else None)
+        )
     return components
 
 
@@ -645,7 +651,7 @@ def _extract_placement(element) -> list[list[float]] | None:
     try:
         matrix = ifcopenshell.util.placement.get_local_placement(placement)
         return matrix.tolist()
-    except Exception:
+    except (AttributeError, RuntimeError, TypeError):
         return None
 
 
@@ -655,7 +661,7 @@ def _extract_type_name(ifc, type_guid: str | None) -> str | None:
         return None
     try:
         matches = ifc.by_guid(type_guid)
-    except Exception:
+    except RuntimeError:
         return None
     return getattr(matches, "Name", None)
 
@@ -685,7 +691,10 @@ def _extract_owner_history(element) -> dict[str, Any] | None:
 
     application = getattr(owner_history, "OwningApplication", None)
     if application:
-        parts = [getattr(application, "ApplicationFullName", None), getattr(application, "Version", None)]
+        parts = [
+            getattr(application, "ApplicationFullName", None),
+            getattr(application, "Version", None),
+        ]
         result["application"] = " ".join(part for part in parts if part) or None
 
     return result
@@ -702,6 +711,7 @@ def _batch_extract_geometry_bounds(
 
     try:
         import multiprocessing  # pylint: disable=import-outside-toplevel
+
         import ifcopenshell.geom  # pylint: disable=import-outside-toplevel
 
         settings = ifcopenshell.geom.settings()
@@ -743,7 +753,7 @@ def _batch_extract_geometry_bounds(
                 "elapsed_seconds": round(time.monotonic() - started_at, 2),
             },
         )
-    except Exception:
+    except (ImportError, RuntimeError):
         pass
 
     # Fallback: placement-based bounds for entities without geometry

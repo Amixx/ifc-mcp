@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from importlib import metadata
 from pathlib import Path
-import re
 
 __all__ = ["__version__"]
 

@@ -6,7 +6,9 @@ from ifc_mcp.tools import analysis
 
 
 def test_find_elements_by_property(model_index):
-    result = analysis.find_elements_by_property(model_index, property_name="IsExternal", operator="exists")
+    result = analysis.find_elements_by_property(
+        model_index, property_name="IsExternal", operator="exists"
+    )
     assert "results" in result
 
 
