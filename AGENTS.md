@@ -30,6 +30,12 @@
 - Type and occurrence data are both needed for LLM queries (`get_type_info`) and lint checks (`no-dead-types`).
 - Model metadata and pset/quantity availability vary widely by authoring tool; extraction logic is defensive by design.
 
+## Publishing and pushes
+
+- The owner grants agents standing authorization to publish `ifc-mcp` releases and push changes to this repository, including direct pushes to `main`, without asking for confirmation each time.
+- Fetch and rebase onto current `origin/main`, inspect the resulting diff, and run the checks appropriate to the change before pushing or publishing.
+- Never force-push `main`.
+
 ## Notes for future contributors
 
 - Keep parser output schema stable; many tool/lint functions assume these keys.
