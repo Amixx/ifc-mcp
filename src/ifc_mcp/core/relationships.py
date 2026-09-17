@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from ifc_mcp.core.index import ModelIndex
+from ifc_mcp.core.types import MaterialComponent
 
 
 def _iter_containments(model: ModelIndex) -> Iterator[tuple[str, dict[str, Any]]]:
@@ -188,6 +189,44 @@ def build_aggregate_map(model: ModelIndex) -> dict[str, str]:
 
     model.relationship_cache["aggregate_child_to_parent"] = child_to_parent
     return child_to_parent
+
+
+def get_effective_materials(model: ModelIndex, global_id: str) -> list[MaterialComponent]:
+    """Collect material evidence on an occurrence, type, and aggregate descendants.
+
+    Each source entity contributes once, even when a malformed graph reaches it twice.
+    This is association evidence, not proof that every part has a material assignment.
+    """
+    cache_key = "material_aggregate_children"
+    if cache_key not in model.relationship_cache:
+        children: dict[str, list[str]] = {}
+        for relation in model.relationships.get("aggregates", []):
+            parent = relation.get("parent_guid")
+            if parent:
+                children.setdefault(parent, []).extend(relation.get("child_guids", []))
+        model.relationship_cache[cache_key] = children
+    children_by_parent = model.relationship_cache[cache_key]
+    materials: list[MaterialComponent] = []
+    pending = [global_id]
+    visited: set[str] = set()
+    sources: set[str] = set()
+    while pending:
+        guid = pending.pop()
+        if guid in visited:
+            continue
+        visited.add(guid)
+        entity = model.get_entity(guid)
+        if entity is None:
+            continue
+        for source_guid in (guid, entity.type_guid):
+            if not source_guid or source_guid in sources:
+                continue
+            source = model.get_entity(source_guid)
+            if source is not None:
+                materials.extend(source.materials)
+                sources.add(source_guid)
+        pending.extend(reversed(children_by_parent.get(guid, [])))
+    return materials
 
 
 def has_direct_geometry(entity: Any) -> bool:

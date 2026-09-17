@@ -13,6 +13,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import ifcopenshell.util.unit
+
 PropertySetKind = Literal["pset", "qto", "other"]
 
 
@@ -27,6 +29,22 @@ class PropertySetOccurrence:
     inherited: bool
     property_names: tuple[str, ...]
     populated_property_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class QuantityValue:
+    """One simple physical quantity, normalized to its corresponding SI unit."""
+
+    global_id: str
+    ifc_class: str
+    set_name: str
+    quantity_name: str
+    quantity_kind: Literal["length", "area", "volume"]
+    raw_value: float
+    si_value: float
+    unit_symbol: str
+    unit_source: Literal["explicit", "project"]
+    inherited: bool
 
 
 def iter_property_set_occurrences(
@@ -64,6 +82,67 @@ def element_property_set_occurrences(element: Any) -> list[PropertySetOccurrence
         if occurrence is not None:
             occurrences.append(occurrence)
     return occurrences
+
+
+def iter_quantity_values(
+    ifc: Any, entity_type: str = "IfcElement"
+) -> Iterator[QuantityValue]:
+    """Yield supported simple quantities with unit provenance and SI values."""
+    for element in ifc.by_type(entity_type):
+        global_id = getattr(element, "GlobalId", None)
+        if not global_id:
+            continue
+        for definition, inherited in _definitions_with_origin(element):
+            if not definition.is_a("IfcElementQuantity") or not definition.Name:
+                continue
+            for quantity in getattr(definition, "Quantities", None) or []:
+                kind_and_attribute = _QUANTITY_VALUE_ATTRIBUTES.get(quantity.is_a())
+                if kind_and_attribute is None or not getattr(quantity, "Name", None):
+                    continue
+                kind, attribute, target_unit = kind_and_attribute
+                raw_value = getattr(quantity, attribute, None)
+                if raw_value is None:
+                    continue
+                unit = ifcopenshell.util.unit.get_property_unit(quantity, ifc)
+                if unit is None:
+                    continue
+                raw = float(raw_value)
+                yield QuantityValue(
+                    global_id=str(global_id),
+                    ifc_class=element.is_a(),
+                    set_name=str(definition.Name),
+                    quantity_name=str(quantity.Name),
+                    quantity_kind=kind,
+                    raw_value=raw,
+                    si_value=float(
+                        ifcopenshell.util.unit.convert(
+                            raw,
+                            getattr(unit, "Prefix", None),
+                            str(unit.Name),
+                            None,
+                            target_unit,
+                        )
+                    ),
+                    unit_symbol=ifcopenshell.util.unit.get_unit_symbol(unit),
+                    unit_source=(
+                        "explicit" if getattr(quantity, "Unit", None) else "project"
+                    ),
+                    inherited=inherited,
+                )
+
+
+_QUANTITY_VALUE_ATTRIBUTES: dict[
+    str, tuple[Literal["length", "area", "volume"], str, str]
+] = {
+    "IfcQuantityLength": ("length", "LengthValue", "METRE"),
+    "IfcQuantityArea": ("area", "AreaValue", "SQUARE_METRE"),
+    "IfcQuantityVolume": ("volume", "VolumeValue", "CUBIC_METRE"),
+}
+
+
+def _definitions_with_origin(element: Any) -> Iterator[tuple[Any, bool]]:
+    yield from ((definition, False) for definition in _occurrence_definitions(element))
+    yield from ((definition, True) for definition in _type_definitions(element))
 
 
 def _occurrence_definitions(element: Any) -> Iterator[Any]:

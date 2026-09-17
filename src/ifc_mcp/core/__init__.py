@@ -15,8 +15,10 @@ from .pipeline import load_model_artifacts, load_model_artifacts_with_ifc
 from .property_sets import (
     PropertySetKind,
     PropertySetOccurrence,
+    QuantityValue,
     element_property_set_occurrences,
     iter_property_set_occurrences,
+    iter_quantity_values,
 )
 from .relationships import get_element_storey_placements
 from .scene import build_scene_model
@@ -43,8 +45,10 @@ __all__ = [
     "get_element_storey_placements",
     "PropertySetKind",
     "PropertySetOccurrence",
+    "QuantityValue",
     "element_property_set_occurrences",
     "iter_property_set_occurrences",
+    "iter_quantity_values",
     "SimplifyResult",
     "needs_simplification",
     "simplify_ifc",

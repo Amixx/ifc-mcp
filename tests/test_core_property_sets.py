@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import ifcopenshell
 
-from ifc_mcp.core import element_property_set_occurrences, iter_property_set_occurrences
+from ifc_mcp.core import (
+    element_property_set_occurrences,
+    iter_property_set_occurrences,
+    iter_quantity_values,
+)
 
 
 def _build_model() -> ifcopenshell.file:
@@ -80,6 +84,81 @@ def test_iter_property_set_occurrences_separates_psets_from_quantity_sets() -> N
     assert by_name["XQto_CoveringBaseQuantities"].property_names == ("GrossArea",)
     assert by_name["Qto_DuctSegmentBaseQuantities"].kind == "qto"
     assert by_name["Qto_DuctSegmentBaseQuantities"].property_names == ("Length",)
+
+
+def test_quantity_values_are_typed_and_normalized_from_project_units() -> None:
+    ifc = ifcopenshell.file(schema="IFC4")
+    project = ifc.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new())
+    units = [
+        ifc.create_entity(
+            "IfcSIUnit", UnitType="LENGTHUNIT", Prefix="MILLI", Name="METRE"
+        ),
+        ifc.create_entity(
+            "IfcSIUnit", UnitType="AREAUNIT", Prefix="MILLI", Name="SQUARE_METRE"
+        ),
+        ifc.create_entity(
+            "IfcSIUnit", UnitType="VOLUMEUNIT", Prefix="MILLI", Name="CUBIC_METRE"
+        ),
+    ]
+    project.UnitsInContext = ifc.create_entity("IfcUnitAssignment", Units=units)
+    member = ifc.create_entity("IfcMember", GlobalId=ifcopenshell.guid.new())
+    quantities = ifc.create_entity(
+        "IfcElementQuantity",
+        GlobalId=ifcopenshell.guid.new(),
+        Name="Qto_MemberBaseQuantities",
+        Quantities=[
+            ifc.create_entity("IfcQuantityLength", Name="Length", LengthValue=2000.0),
+            ifc.create_entity(
+                "IfcQuantityArea", Name="CrossSectionArea", AreaValue=500000.0
+            ),
+            ifc.create_entity("IfcQuantityVolume", Name="NetVolume", VolumeValue=1e9),
+        ],
+    )
+    ifc.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId=ifcopenshell.guid.new(),
+        RelatedObjects=[member],
+        RelatingPropertyDefinition=quantities,
+    )
+
+    values = {row.quantity_name: row for row in iter_quantity_values(ifc)}
+
+    assert values["Length"].si_value == 2.0
+    assert values["CrossSectionArea"].si_value == 0.5
+    assert values["NetVolume"].si_value == 1.0
+    assert {row.unit_source for row in values.values()} == {"project"}
+
+
+def test_quantity_value_records_an_explicit_unit_override() -> None:
+    ifc = ifcopenshell.file(schema="IFC4")
+    project = ifc.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new())
+    metres = ifc.create_entity("IfcSIUnit", UnitType="LENGTHUNIT", Name="METRE")
+    project.UnitsInContext = ifc.create_entity("IfcUnitAssignment", Units=[metres])
+    member = ifc.create_entity("IfcMember", GlobalId=ifcopenshell.guid.new())
+    millimetres = ifc.create_entity(
+        "IfcSIUnit", UnitType="LENGTHUNIT", Prefix="MILLI", Name="METRE"
+    )
+    quantities = ifc.create_entity(
+        "IfcElementQuantity",
+        GlobalId=ifcopenshell.guid.new(),
+        Name="Qto_MemberBaseQuantities",
+        Quantities=[
+            ifc.create_entity(
+                "IfcQuantityLength", Name="Length", LengthValue=2000.0, Unit=millimetres
+            )
+        ],
+    )
+    ifc.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId=ifcopenshell.guid.new(),
+        RelatedObjects=[member],
+        RelatingPropertyDefinition=quantities,
+    )
+
+    [value] = list(iter_quantity_values(ifc))
+
+    assert value.si_value == 2.0
+    assert value.unit_source == "explicit"
 
 
 def test_iter_property_set_occurrences_marks_type_sets_as_inherited() -> None:

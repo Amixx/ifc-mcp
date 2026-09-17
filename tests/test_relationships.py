@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,12 +12,19 @@ from ifc_mcp.core.relationships import (
     build_aggregate_map,
     build_storey_container_map,
     build_storey_containment_map,
+    get_effective_materials,
     get_element_storey_placements,
     has_direct_geometry,
     resolve_storey_for_element,
 )
-from ifc_mcp.core.types import EntityRecord, ParsedModel, SceneElement, SceneModel
-import ifc_mcp.mcp.model_store as model_store
+from ifc_mcp.core.types import (
+    EntityRecord,
+    MaterialComponent,
+    ParsedModel,
+    SceneElement,
+    SceneModel,
+)
+from ifc_mcp.mcp import model_store
 from ifc_mcp.mcp.model_store import ModelStore
 from ifc_mcp.tools import relationships
 
@@ -50,6 +57,34 @@ def test_resolve_storey_for_element(synthetic_relationship_index):
 
     # A true orphan (no containment, no aggregate parent) resolves to no storey.
     assert resolve_storey_for_element(index, "SLAB1") is None
+
+
+def test_effective_materials_include_aggregate_parts_and_their_types(
+    synthetic_relationship_index,
+):
+    index = synthetic_relationship_index
+    index.by_guid["MULLION1"].materials = [MaterialComponent(name="Aluminium")]
+    index.by_guid["MULLION2"].type_guid = "MULLION3"
+    index.by_guid["MULLION3"].materials = [MaterialComponent(name="Glass")]
+
+    names = [material.name for material in get_effective_materials(index, "CURTAIN1")]
+    assert names == [
+        "Aluminium",
+        "Glass",
+    ]
+
+
+def test_effective_materials_terminate_on_an_aggregate_cycle(
+    synthetic_relationship_index,
+):
+    index = synthetic_relationship_index
+    index.relationships["aggregates"].append(
+        {"parent_guid": "MULLION1", "child_guids": ["CURTAIN1"]}
+    )
+    index.by_guid["MULLION1"].materials = [MaterialComponent(name="Aluminium")]
+
+    names = [material.name for material in get_effective_materials(index, "CURTAIN1")]
+    assert names == ["Aluminium"]
 
 
 def test_resolve_storey_through_a_spatial_container(spatial_container_index):
