@@ -33,15 +33,26 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Run checks
-        shell: bash
-        run: |
-          set -euxo pipefail
-          uv run --extra dev python scripts/check_file_sizes.py
-          uv run --extra dev ruff check src tests scripts
-          uv run --extra dev ruff format --check src tests scripts
-          uv run --extra dev mypy src
-          uv run --extra dev vulture
-          uv run --extra dev deptry .
-          uv run --extra dev bandit -q -r src scripts
-          timeout --foreground 420 uv run --extra dev pytest -q -n 0
+      - name: Check file sizes
+        run: uv run --extra dev python scripts/check_file_sizes.py
+
+      - name: Ruff lint
+        run: uv run --extra dev ruff check src tests scripts
+
+      - name: Ruff format
+        run: uv run --extra dev ruff format --check src tests scripts
+
+      - name: Mypy
+        run: uv run --extra dev mypy src
+
+      - name: Vulture
+        run: uv run --extra dev vulture
+
+      - name: Deptry
+        run: uv run --extra dev deptry .
+
+      - name: Bandit
+        run: uv run --extra dev bandit -q -r src scripts
+
+      - name: Pytest
+        run: timeout --foreground 420 uv run --extra dev pytest -q -n 0
