@@ -27,8 +27,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Configure uv
+        run: echo "UV_LINK_MODE=copy" >> "$GITHUB_ENV"
+
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Run checks
-        run: make check
+        run: make check VERBOSE=1
