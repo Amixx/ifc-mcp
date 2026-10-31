@@ -18,6 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: List LFS objects
+        run: git lfs ls-files -l > .lfs-objects
+
+      - uses: actions/cache@v6.1.0
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-objects') }}
+
+      - name: Pull LFS fixtures
+        run: git lfs pull --exclude=data/AdvancedProject.ifc
+
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
