@@ -80,7 +80,11 @@ def _axis_geometry(axis: Any) -> tuple[str | None, list[list[float]]]:
     if points is not None:
         return (curve.is_a(), points.tolist())
     if curve.is_a("IfcIndexedPolyCurve"):
-        return ("IfcArcIndex", [])
+        arc = next(
+            (segment for segment in curve.Segments or () if segment.is_a("IfcArcIndex")), None
+        )
+        if arc is not None:
+            return (arc.is_a(), [])
     return (curve.is_a(), [])
 
 
