@@ -12,6 +12,7 @@ from typing import Any
 import ifcopenshell
 import ifcopenshell.util.element
 import ifcopenshell.util.placement
+import ifcopenshell.util.shape
 
 from .types import ClassificationReference, EntityRecord, MaterialComponent, ParsedModel
 
@@ -732,15 +733,10 @@ def _batch_extract_geometry_bounds(
             while True:
                 shape = iterator.get()
                 guid = shape.guid
-                vertices = list(getattr(shape.geometry, "verts", []) or [])
-                if vertices:
-                    xs = vertices[0::3]
-                    ys = vertices[1::3]
-                    zs = vertices[2::3]
-                    bounds_map[guid] = {
-                        "min": [min(xs), min(ys), min(zs)],
-                        "max": [max(xs), max(ys), max(zs)],
-                    }
+                vertices = ifcopenshell.util.shape.get_vertices(shape.geometry)
+                if len(vertices):
+                    low, high = ifcopenshell.util.shape.get_bbox(vertices)
+                    bounds_map[guid] = {"min": low.tolist(), "max": high.tolist()}
                 processed += 1
                 if not iterator.next():
                     break

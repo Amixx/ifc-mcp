@@ -8,7 +8,9 @@ from typing import Any
 
 import ifcopenshell
 import ifcopenshell.util.placement
+import ifcopenshell.util.shape
 import ifcopenshell.util.unit
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -316,23 +318,13 @@ def _extract_bounds_from_shape(element: Any) -> dict[str, list[float]] | None:
         settings.set("disable-opening-subtractions", True)
         settings.set("keep-bounding-boxes", True)
         shape: Any = ifcopenshell.geom.create_shape(settings, element)
-        vertices = list(getattr(shape.geometry, "verts", []) or [])
+        vertices = ifcopenshell.util.shape.get_vertices(shape.geometry)
     except RuntimeError:
         return None
 
-    if not vertices:
+    if not len(vertices):
         return None
-
-    xs = vertices[0::3]
-    ys = vertices[1::3]
-    zs = vertices[2::3]
-    if not xs or not ys or not zs:
-        return None
-
-    return {
-        "min": [min(xs), min(ys), min(zs)],
-        "max": [max(xs), max(ys), max(zs)],
-    }
+    return _bounds_from_vertices(vertices)
 
 
 def _extract_bounds_from_placement(element: Any) -> dict[str, list[float]] | None:
@@ -392,14 +384,14 @@ def _extract_bounds_with_iterator(
         while True:
             shape = iterator.get()
             seen_guids.add(shape.guid)
-            vertices = list(getattr(shape.geometry, "verts", []) or [])
+            vertices = ifcopenshell.util.shape.get_vertices(shape.geometry)
             element = by_guid.get(shape.guid)
-            if vertices and element is not None:
+            if len(vertices) and element is not None:
                 bounds[shape.guid] = _bounds_row(
                     element,
                     _bounds_from_vertices(vertices),
                     source="ifcopenshell.geom world coordinates",
-                    vertex_count=len(vertices) // 3,
+                    vertex_count=len(vertices),
                 )
             if deadline is not None and _time.monotonic() >= deadline:
                 budget_expired = True
@@ -435,7 +427,7 @@ def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, li
     return _merge_bounds(collected)
 
 
-def _extract_item_bounds(item: Any, parent_matrix: Any) -> dict[str, list[float]] | None:
+def _extract_item_bounds(item: Any, parent_matrix: np.ndarray) -> dict[str, list[float]] | None:
     if item.is_a("IfcExtrudedAreaSolid"):
         return _extract_extruded_area_solid_bounds(item, parent_matrix)
 
@@ -446,7 +438,10 @@ def _extract_item_bounds(item: Any, parent_matrix: Any) -> dict[str, list[float]
         return None
 
     if item.is_a("IfcMappedItem"):
-        mapped_matrix = _matrix_multiply(parent_matrix, _mapped_item_matrix(item))
+        mapping = ifcopenshell.util.placement.get_mappeditem_transformation(item)
+        if mapping is None:
+            return None
+        mapped_matrix = parent_matrix @ mapping
         mapped_representation = getattr(
             getattr(item, "MappingSource", None), "MappedRepresentation", None
         )
@@ -461,7 +456,7 @@ def _extract_item_bounds(item: Any, parent_matrix: Any) -> dict[str, list[float]
 
 
 def _extract_extruded_area_solid_bounds(
-    item: Any, parent_matrix: Any
+    item: Any, parent_matrix: np.ndarray
 ) -> dict[str, list[float]] | None:
     profile_points = _profile_points_2d(getattr(item, "SweptArea", None))
     if not profile_points:
@@ -469,23 +464,18 @@ def _extract_extruded_area_solid_bounds(
 
     depth = float(getattr(item, "Depth", 0.0) or 0.0)
     direction = _direction_ratios(getattr(item, "ExtrudedDirection", None), default=(0.0, 0.0, 1.0))
-    item_matrix = _matrix_multiply(
-        parent_matrix, _axis2placement_matrix(getattr(item, "Position", None))
+    item_matrix = (
+        parent_matrix
+        @ _axis2placement_matrix(getattr(item, "Position", None))
+        @ _axis2placement_matrix(getattr(getattr(item, "SweptArea", None), "Position", None))
     )
-    profile_matrix = _axis2placement_matrix(
-        getattr(getattr(item, "SweptArea", None), "Position", None)
-    )
-    item_matrix = _matrix_multiply(item_matrix, profile_matrix)
-    points: list[tuple[float, float, float]] = []
+    points: list[tuple[float, float, float, float]] = []
     for x, y in profile_points:
-        points.append(_transform_point(item_matrix, (x, y, 0.0)))
+        points.append((x, y, 0.0, 1.0))
         points.append(
-            _transform_point(
-                item_matrix,
-                (x + direction[0] * depth, y + direction[1] * depth, direction[2] * depth),
-            )
+            (x + direction[0] * depth, y + direction[1] * depth, direction[2] * depth, 1.0)
         )
-    return _bounds_from_points(points)
+    return _bounds_from_vertices((item_matrix @ np.array(points).T).T[:, :3])
 
 
 def _profile_points_2d(profile: Any) -> list[tuple[float, float]]:
@@ -518,37 +508,13 @@ def _curve_points_2d(curve: Any) -> list[tuple[float, float]]:
     return points
 
 
-def _mapped_item_matrix(item: Any) -> list[list[float]]:
-    source = getattr(item, "MappingSource", None)
-    origin = _axis2placement_matrix(getattr(source, "MappingOrigin", None))
-    target = _cartesian_transformation_operator_matrix(getattr(item, "MappingTarget", None))
-    return _matrix_multiply(target, _invert_rigid_matrix(origin))
-
-
-def _axis2placement_matrix(placement: Any) -> list[list[float]]:
+def _axis2placement_matrix(placement: Any) -> np.ndarray:
     if placement is None:
-        return _identity_matrix()
+        return np.eye(4)
     try:
-        return ifcopenshell.util.placement.get_axis2placement(placement).tolist()
+        return ifcopenshell.util.placement.get_axis2placement(placement)
     except (AttributeError, RuntimeError, TypeError):
-        return _identity_matrix()
-
-
-def _cartesian_transformation_operator_matrix(operator: Any) -> list[list[float]]:
-    if operator is None:
-        return _identity_matrix()
-
-    scale = float(getattr(operator, "Scale", 1.0) or 1.0)
-    axis1 = _direction_ratios(getattr(operator, "Axis1", None), default=(1.0, 0.0, 0.0))
-    axis2 = _direction_ratios(getattr(operator, "Axis2", None), default=(0.0, 1.0, 0.0))
-    axis3 = _direction_ratios(getattr(operator, "Axis3", None), default=_cross(axis1, axis2))
-    origin = _cartesian_point(getattr(operator, "LocalOrigin", None), dimensions=3)
-    return [
-        [axis1[0] * scale, axis2[0] * scale, axis3[0] * scale, origin[0]],
-        [axis1[1] * scale, axis2[1] * scale, axis3[1] * scale, origin[1]],
-        [axis1[2] * scale, axis2[2] * scale, axis3[2] * scale, origin[2]],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
+        return np.eye(4)
 
 
 def _direction_ratios(
@@ -563,86 +529,9 @@ def _direction_ratios(
     return (values[0], values[1], values[2])
 
 
-def _cartesian_point(point: Any, *, dimensions: int) -> list[float]:
-    coords = [float(value) for value in list(getattr(point, "Coordinates", []) or [])[:dimensions]]
-    while len(coords) < dimensions:
-        coords.append(0.0)
-    return coords
-
-
-def _cross(
-    left: tuple[float, float, float], right: tuple[float, float, float]
-) -> tuple[float, float, float]:
-    return (
-        left[1] * right[2] - left[2] * right[1],
-        left[2] * right[0] - left[0] * right[2],
-        left[0] * right[1] - left[1] * right[0],
-    )
-
-
-def _identity_matrix() -> list[list[float]]:
-    return [
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-
-
-def _matrix_multiply(left: Any, right: Any) -> list[list[float]]:
-    return [
-        [
-            sum(float(left[row][index]) * float(right[index][column]) for index in range(4))
-            for column in range(4)
-        ]
-        for row in range(4)
-    ]
-
-
-def _invert_rigid_matrix(matrix: Any) -> list[list[float]]:
-    rotation_transpose = [[float(matrix[column][row]) for column in range(3)] for row in range(3)]
-    translation = [float(matrix[row][3]) for row in range(3)]
-    inverse_translation = [
-        -sum(rotation_transpose[row][column] * translation[column] for column in range(3))
-        for row in range(3)
-    ]
-    return [
-        [*rotation_transpose[0], inverse_translation[0]],
-        [*rotation_transpose[1], inverse_translation[1]],
-        [*rotation_transpose[2], inverse_translation[2]],
-        [0.0, 0.0, 0.0, 1.0],
-    ]
-
-
-def _transform_point(matrix: Any, point: tuple[float, float, float]) -> tuple[float, float, float]:
-    x, y, z = point
-    return (
-        float(matrix[0][0]) * x
-        + float(matrix[0][1]) * y
-        + float(matrix[0][2]) * z
-        + float(matrix[0][3]),
-        float(matrix[1][0]) * x
-        + float(matrix[1][1]) * y
-        + float(matrix[1][2]) * z
-        + float(matrix[1][3]),
-        float(matrix[2][0]) * x
-        + float(matrix[2][1]) * y
-        + float(matrix[2][2]) * z
-        + float(matrix[2][3]),
-    )
-
-
-def _bounds_from_vertices(vertices: list[float]) -> dict[str, list[float]]:
-    return _bounds_from_points(
-        list(zip(vertices[0::3], vertices[1::3], vertices[2::3], strict=False))
-    )
-
-
-def _bounds_from_points(points: list[tuple[float, float, float]]) -> dict[str, list[float]]:
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    zs = [point[2] for point in points]
-    return {"min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]}
+def _bounds_from_vertices(vertices: np.ndarray) -> dict[str, list[float]]:
+    low, high = ifcopenshell.util.shape.get_bbox(vertices)
+    return {"min": low.tolist(), "max": high.tolist()}
 
 
 def _merge_bounds(bounds: list[dict[str, list[float]]]) -> dict[str, list[float]] | None:

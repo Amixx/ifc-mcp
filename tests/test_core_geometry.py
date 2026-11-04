@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import ifcopenshell
+import ifcopenshell.api.context
+import ifcopenshell.api.project
+import ifcopenshell.api.root
+import ifcopenshell.api.unit
+import pytest
 
 from ifc_mcp.core.geometry import (
     extract_element_bounds_batch,
@@ -216,3 +223,102 @@ def test_bounds_batch_time_budget_only_moves_elements_out_of_the_complete_scan()
     assert {row["global_id"] for row in truncated.unscanned} <= {
         row["global_id"] for row in complete.bounds
     } | {row["global_id"] for row in complete.diagnostics}
+
+
+@pytest.mark.parametrize(
+    "mapping_target",
+    [
+        pytest.param({"origin": (5000.0, 0.0, 0.0)}, id="offset-mapping-origin"),
+        pytest.param({"axis1": (2.0, 0.0, 0.0)}, id="unnormalised-axis"),
+        pytest.param({"scale2": 2.0, "scale3": 3.0}, id="non-uniform-scale"),
+    ],
+)
+def test_batch_bounds_reads_a_mapped_item_where_tessellation_puts_it(
+    mapping_target: dict[str, Any],
+) -> None:
+    ifc, wall = _wall_with_mapped_box(**mapping_target)
+
+    parametric = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True)
+    tessellated = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=False)
+
+    [parametric_row] = parametric.bounds
+    [tessellated_row] = tessellated.bounds
+    assert parametric_row["source"] == "ifc parametric swept solid"
+    assert _extent(parametric_row) == _extent(tessellated_row)
+    assert parametric_row["global_id"] == wall.GlobalId
+
+
+def test_batch_bounds_leaves_a_mapped_item_with_a_2d_target_to_tessellation() -> None:
+    ifc, wall = _wall_with_mapped_box()
+    [item] = wall.Representation.Representations[0].Items
+    item.MappingTarget = ifc.createIfcCartesianTransformationOperator2D(
+        None, None, ifc.createIfcCartesianPoint((0.0, 0.0)), None
+    )
+
+    [row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True).bounds
+
+    assert row["source"] == "ifcopenshell.geom world coordinates"
+    assert _extent(row) == (-0.5, 0.5, -0.5, 0.5, 0.0, 1.0)
+
+
+def _wall_with_mapped_box(
+    *,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    axis1: tuple[float, float, float] | None = None,
+    scale2: float | None = None,
+    scale3: float | None = None,
+) -> tuple[ifcopenshell.file, ifcopenshell.entity_instance]:
+    ifc = ifcopenshell.api.project.create_file(version="IFC4")
+    ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcProject")
+    ifcopenshell.api.unit.assign_unit(ifc)
+    model = ifcopenshell.api.context.add_context(ifc, context_type="Model")
+    body = ifcopenshell.api.context.add_context(
+        ifc, context_type="Model", context_identifier="Body", target_view="MODEL_VIEW", parent=model
+    )
+    profile = ifc.createIfcRectangleProfileDef(
+        "AREA",
+        None,
+        ifc.createIfcAxis2Placement2D(ifc.createIfcCartesianPoint((0.0, 0.0))),
+        1000.0,
+        1000.0,
+    )
+    box = ifc.createIfcExtrudedAreaSolid(
+        profile,
+        ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0))),
+        ifc.createIfcDirection((0.0, 0.0, 1.0)),
+        1000.0,
+    )
+    representation_map = ifc.createIfcRepresentationMap(
+        ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint(origin)),
+        ifc.createIfcShapeRepresentation(body, "Body", "SweptSolid", [box]),
+    )
+    target = ifc.createIfcCartesianTransformationOperator3DnonUniform(
+        ifc.createIfcDirection(axis1) if axis1 else None,
+        None,
+        ifc.createIfcCartesianPoint((0.0, 0.0, 0.0)),
+        None,
+        None,
+        scale2,
+        scale3,
+    )
+    wall = ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcWall")
+    wall.ObjectPlacement = ifc.createIfcLocalPlacement(
+        None, ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0)))
+    )
+    wall.Representation = ifc.createIfcProductDefinitionShape(
+        None,
+        None,
+        [
+            ifc.createIfcShapeRepresentation(
+                body,
+                "Body",
+                "MappedRepresentation",
+                [ifc.createIfcMappedItem(representation_map, target)],
+            )
+        ],
+    )
+    return ifc, wall
+
+
+def _extent(row: dict[str, Any]) -> tuple[float, ...]:
+    return tuple(row[f"{bound}_{axis}_m"] for axis in "xyz" for bound in ("min", "max"))
