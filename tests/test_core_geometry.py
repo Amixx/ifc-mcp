@@ -261,6 +261,25 @@ def test_batch_bounds_leaves_a_mapped_item_with_a_2d_target_to_tessellation() ->
     assert _extent(row) == (-0.5, 0.5, -0.5, 0.5, 0.0, 1.0)
 
 
+def test_batch_bounds_leaves_a_body_with_an_unreadable_mapped_item_to_tessellation() -> None:
+    ifc, wall = _wall_with_mapped_box()
+    [representation] = wall.Representation.Representations
+    [mapped] = representation.Items
+    unreadable = ifc.createIfcMappedItem(
+        mapped.MappingSource,
+        ifc.createIfcCartesianTransformationOperator2D(
+            None, None, ifc.createIfcCartesianPoint((3000.0, 0.0)), None
+        ),
+    )
+    representation.Items = [mapped.MappingSource.MappedRepresentation.Items[0], unreadable]
+
+    [parametric_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True).bounds
+    [tessellated_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=False).bounds
+
+    assert parametric_row["source"] == "ifcopenshell.geom world coordinates"
+    assert _extent(parametric_row) == _extent(tessellated_row)
+
+
 def _wall_with_mapped_box(
     *,
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),

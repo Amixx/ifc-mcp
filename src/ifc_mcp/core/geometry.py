@@ -411,19 +411,25 @@ def _extract_bounds_with_iterator(
 
 
 def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, list[float]] | None:
+    """Bounds of every Body item, or None when any one of them cannot be read parametrically."""
     try:
         element_matrix = ifcopenshell.util.placement.get_local_placement(element.ObjectPlacement)
     except (AttributeError, RuntimeError, TypeError):
         return None
 
-    collected: list[dict[str, list[float]]] = []
-    representation = getattr(element, "Representation", None)
-    for shape_representation in getattr(representation, "Representations", []) or []:
-        for item in getattr(shape_representation, "Items", []) or []:
-            item_bounds = _extract_item_bounds(item, element_matrix)
-            if item_bounds is not None:
-                collected.append(item_bounds)
+    representations = getattr(element.Representation, "Representations", None) or ()
+    body = [r for r in representations if r.RepresentationIdentifier == "Body"]
+    items = [item for representation in body for item in representation.Items]
+    return _extract_all_item_bounds(items, element_matrix)
 
+
+def _extract_all_item_bounds(items: Iterable[Any], matrix: np.ndarray) -> dict[str, Any] | None:
+    collected = []
+    for item in items:
+        bounds = _extract_item_bounds(item, matrix)
+        if bounds is None:
+            return None
+        collected.append(bounds)
     return _merge_bounds(collected)
 
 
@@ -431,26 +437,18 @@ def _extract_item_bounds(item: Any, parent_matrix: np.ndarray) -> dict[str, list
     if item.is_a("IfcExtrudedAreaSolid"):
         return _extract_extruded_area_solid_bounds(item, parent_matrix)
 
-    if item.is_a("IfcBooleanResult") or item.is_a("IfcBooleanClippingResult"):
-        first_operand = getattr(item, "FirstOperand", None)
-        if first_operand is not None:
-            return _extract_item_bounds(first_operand, parent_matrix)
-        return None
+    if item.is_a("IfcBooleanResult"):
+        operands = [item.FirstOperand]
+        if item.Operator == "UNION":
+            operands.append(item.SecondOperand)
+        return _extract_all_item_bounds(operands, parent_matrix)
 
     if item.is_a("IfcMappedItem"):
         mapping = ifcopenshell.util.placement.get_mappeditem_transformation(item)
         if mapping is None:
             return None
-        mapped_matrix = parent_matrix @ mapping
-        mapped_representation = getattr(
-            getattr(item, "MappingSource", None), "MappedRepresentation", None
-        )
-        child_bounds = [
-            bounds
-            for child in getattr(mapped_representation, "Items", []) or []
-            if (bounds := _extract_item_bounds(child, mapped_matrix)) is not None
-        ]
-        return _merge_bounds(child_bounds)
+        items = item.MappingSource.MappedRepresentation.Items
+        return _extract_all_item_bounds(items, parent_matrix @ mapping)
 
     return None
 
