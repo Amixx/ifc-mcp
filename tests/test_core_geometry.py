@@ -318,6 +318,46 @@ def test_batch_bounds_leaves_an_unreadable_profile_placement_to_tessellation() -
     assert _extent(parametric_row) == _extent(tessellated_row)
 
 
+def test_batch_bounds_leaves_a_mapped_item_with_a_2d_origin_to_tessellation() -> None:
+    ifc, wall = _wall_with_mapped_box()
+    mapped = wall.Representation.Representations[0].Items[0]
+    mapped.MappingSource.MappingOrigin.Location = ifc.createIfcCartesianPoint((0.0, 0.0))
+
+    result = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True)
+
+    assert [row["source"] for row in result.bounds] == ["ifcopenshell.geom world coordinates"]
+
+
+def test_batch_bounds_leaves_an_object_placement_with_a_2d_location_to_tessellation() -> None:
+    ifc, wall = _wall_with_mapped_box()
+    wall.ObjectPlacement.RelativePlacement.Location = ifc.createIfcCartesianPoint((0.0, 0.0))
+
+    result = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True)
+
+    assert [row["source"] for row in result.bounds] == ["ifcopenshell.geom world coordinates"]
+
+
+def test_batch_bounds_tessellates_a_tapered_extrusion() -> None:
+    ifc, wall = _wall_with_mapped_box()
+    box = (
+        wall.Representation.Representations[0].Items[0].MappingSource.MappedRepresentation.Items[0]
+    )
+    tapered = ifc.createIfcExtrudedAreaSolidTapered(
+        box.SweptArea,
+        box.Position,
+        box.ExtrudedDirection,
+        box.Depth,
+        ifc.createIfcRectangleProfileDef("AREA", None, None, 3000.0, 3000.0),
+    )
+    wall.Representation.Representations[0].Items = [tapered]
+
+    [parametric_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True).bounds
+    [tessellated_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=False).bounds
+
+    assert _extent(parametric_row) == _extent(tessellated_row)
+    assert parametric_row["max_x_m"] == 1.5
+
+
 def _wall_with_mapped_box(
     *,
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),

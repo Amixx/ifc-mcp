@@ -414,7 +414,7 @@ def _extract_bounds_from_parametric_representation(element: Any) -> dict[str, li
     """Bounds of every Body item, or None when any one of them cannot be read parametrically."""
     try:
         element_matrix = ifcopenshell.util.placement.get_local_placement(element.ObjectPlacement)
-    except (AttributeError, RuntimeError, TypeError):
+    except (AttributeError, RuntimeError, TypeError, ValueError):
         return None
 
     representations = getattr(element.Representation, "Representations", None) or ()
@@ -434,7 +434,7 @@ def _extract_all_item_bounds(items: Iterable[Any], matrix: np.ndarray) -> dict[s
 
 
 def _extract_item_bounds(item: Any, parent_matrix: np.ndarray) -> dict[str, list[float]] | None:
-    if item.is_a("IfcExtrudedAreaSolid"):
+    if item.is_a() == "IfcExtrudedAreaSolid":
         return _extract_extruded_area_solid_bounds(item, parent_matrix)
 
     if item.is_a("IfcBooleanResult"):
@@ -444,7 +444,10 @@ def _extract_item_bounds(item: Any, parent_matrix: np.ndarray) -> dict[str, list
         return _extract_all_item_bounds(operands, parent_matrix)
 
     if item.is_a("IfcMappedItem"):
-        mapping = ifcopenshell.util.placement.get_mappeditem_transformation(item)
+        try:
+            mapping = ifcopenshell.util.placement.get_mappeditem_transformation(item)
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return None
         if mapping is None:
             return None
         items = item.MappingSource.MappedRepresentation.Items
@@ -498,12 +501,8 @@ def _profile_points_2d(profile: Any) -> list[tuple[float, float]]:
 def _curve_points_2d(curve: Any) -> list[tuple[float, float]]:
     if curve is None or not curve.is_a("IfcPolyline"):
         return []
-    points = []
-    for point in getattr(curve, "Points", []) or []:
-        coords = list(getattr(point, "Coordinates", []) or [])
-        if len(coords) >= 2:
-            points.append((float(coords[0]), float(coords[1])))
-    return points
+    coords = [list(getattr(p, "Coordinates", []) or []) for p in getattr(curve, "Points", []) or []]
+    return [(float(c[0]), float(c[1])) for c in coords if len(c) >= 2]
 
 
 def _axis2placement_matrix(placement: Any) -> np.ndarray | None:
