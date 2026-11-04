@@ -2,39 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from collections.abc import Sequence
 
 import ifcopenshell
+import ifcopenshell.api.project
+import ifcopenshell.api.root
+import ifcopenshell.api.unit
 
 from ifc_mcp.core import get_grid_axes, get_grid_extents
-from ifc_mcp.core import grids as grid_module
 
 
-def test_get_grid_extents_transforms_polyline_points(monkeypatch: Any) -> None:
-    monkeypatch.setattr(
-        grid_module.ifcopenshell.util.unit, "calculate_unit_scale", lambda _ifc: 0.001
-    )
-    monkeypatch.setattr(
-        grid_module.ifcopenshell.util.placement,
-        "get_local_placement",
-        lambda _placement: [
-            [1.0, 0.0, 0.0, 2.0],
-            [0.0, 1.0, 0.0, -1.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ],
-    )
-    ifc = FakeIfc(
-        [
-            FakeGrid(
-                GlobalId="grid-b",
-                UAxes=[FakeAxis(FakePolyline([FakePoint((0.0, 0.0)), FakePoint((10.0, 5.0))]))],
-                VAxes=[FakeAxis(FakePolyline([FakePoint((-4.0, 8.0, 2.0))]))],
-            ),
-            FakeGrid(GlobalId="grid-a"),
-        ]
-    )
+def test_get_grid_extents_transforms_polyline_points() -> None:
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-b", offset=(2.0, -1.0))
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(0.0, 0.0), (10.0, 5.0)]))
+    _add_axis(ifc, grid, "VAxes", _polyline(ifc, [(-4.0, 8.0, 2.0)]))
+    _grid(ifc, "grid-a")
 
     assert get_grid_extents(ifc) == {
         "grid_global_ids": ["grid-b"],
@@ -53,20 +36,13 @@ def test_get_grid_extents_returns_none_without_grids() -> None:
 
 
 def test_get_grid_axes_reads_every_axis_list() -> None:
-    ifc = FakeIfc(
-        [
-            FakeGrid(
-                GlobalId="grid-b",
-                UAxes=[
-                    FakeAxis(FakePolyline([FakePoint((0.0, 0.0))]), AxisTag="A"),
-                    FakeAxis(FakePolyline([FakePoint((1.0, 0.0))]), AxisTag="B"),
-                ],
-                VAxes=[FakeAxis(FakePolyline([FakePoint((0.0, 1.0))]), AxisTag="1")],
-                WAxes=[FakeAxis(FakePolyline([FakePoint((0.0, 2.0))]), AxisTag="Z")],
-            ),
-            FakeGrid(GlobalId="grid-a"),
-        ]
-    )
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-b")
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(0.0, 0.0)]), tag="A")
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(1.0, 0.0)]), tag="B")
+    _add_axis(ifc, grid, "VAxes", _polyline(ifc, [(0.0, 1.0)]), tag="1")
+    _add_axis(ifc, grid, "WAxes", _polyline(ifc, [(0.0, 2.0)]), tag="Z")
+    _grid(ifc, "grid-a")
 
     assert [
         (row["grid_global_id"], row["axis_set"], row["axis_tag"]) for row in get_grid_axes(ifc)
@@ -79,95 +55,62 @@ def test_get_grid_axes_reads_every_axis_list() -> None:
 
 
 def test_get_grid_axes_keeps_an_untagged_axis_distinguishable() -> None:
-    ifc = FakeIfc(
-        [
-            FakeGrid(
-                GlobalId="grid-a",
-                UAxes=[
-                    FakeAxis(FakePolyline([FakePoint((0.0, 0.0))]), AxisTag="A"),
-                    FakeAxis(FakePolyline([FakePoint((1.0, 1.0))])),
-                ],
-            )
-        ]
-    )
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a")
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(0.0, 0.0)]), tag="A")
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(1.0, 1.0)]), tag=None)
 
     assert [row["axis_tag"] for row in get_grid_axes(ifc)] == ["A", None]
 
 
-def test_get_grid_axes_places_points_in_world_metres(monkeypatch: Any) -> None:
-    _place_at(monkeypatch, offset_x=2.0, offset_y=-1.0)
-    ifc = FakeIfc(
-        [
-            FakeGrid(
-                GlobalId="grid-a",
-                UAxes=[
-                    FakeAxis(
-                        FakePolyline([FakePoint((0.0, 0.0)), FakePoint((10000.0, 0.0))]),
-                        AxisTag="A",
-                    )
-                ],
-            )
-        ]
-    )
+def test_get_grid_axes_places_points_in_world_metres() -> None:
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a", offset=(2.0, -1.0))
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(0.0, 0.0), (10000.0, 0.0)]), tag="A")
 
     assert get_grid_axes(ifc)[0]["points_m"] == [[0.002, -0.001], [10.002, -0.001]]
 
 
-def test_get_grid_axes_walks_an_indexed_poly_curve(monkeypatch: Any) -> None:
-    _place_at(monkeypatch)
-    curve = FakeIndexedPolyCurve(
-        Points=FakeCoordList([(0.0, 0.0), (1000.0, 0.0), (4000.0, 0.0)]),
-        Segments=[FakeLineIndex((2, 3))],
+def test_get_grid_axes_walks_an_indexed_poly_curve() -> None:
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a")
+    curve = _indexed_poly_curve(
+        ifc, [(0.0, 0.0), (1000.0, 0.0), (4000.0, 0.0)], [ifc.createIfcLineIndex((2, 3))]
     )
-    ifc = FakeIfc([FakeGrid(GlobalId="grid-a", UAxes=[FakeAxis(curve, AxisTag="A")])])
+    _add_axis(ifc, grid, "UAxes", curve, tag="A")
 
     assert get_grid_axes(ifc)[0]["points_m"] == [[1.0, 0.0], [4.0, 0.0]]
 
 
 def test_get_grid_axes_names_a_curve_class_it_does_not_read_and_keeps_the_axis() -> None:
-    ifc = FakeIfc([FakeGrid(GlobalId="grid-a", UAxes=[FakeAxis(FakeCurve(), AxisTag="A")])])
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a")
+    circle = ifc.createIfcCircle(
+        ifc.createIfcAxis2Placement2D(ifc.createIfcCartesianPoint((0.0, 0.0))), 1000.0
+    )
+    _add_axis(ifc, grid, "UAxes", circle, tag="A")
 
     [row] = get_grid_axes(ifc)
 
-    assert (row["axis_tag"], row["curve"], row["points_m"]) == ("A", "IfcCurve", [])
+    assert (row["axis_tag"], row["curve"], row["points_m"]) == ("A", "IfcCircle", [])
 
 
-def test_get_grid_axes_names_the_arc_that_bends_an_axis_and_keeps_the_axis(
-    monkeypatch: Any,
-) -> None:
-    _place_at(monkeypatch)
-    curve = FakeIndexedPolyCurve(
-        Points=FakeCoordList([(0.0, 0.0), (1000.0, 500.0), (2000.0, 0.0)]),
-        Segments=[FakeArcIndex((1, 2, 3))],
-    )
-    ifc = FakeIfc([FakeGrid(GlobalId="grid-a", UAxes=[FakeAxis(curve, AxisTag="A")])])
+def test_get_grid_axes_names_the_arc_that_bends_an_axis_and_keeps_the_axis() -> None:
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a")
+    _add_axis(ifc, grid, "UAxes", _arc(ifc), tag="A")
 
     [row] = get_grid_axes(ifc)
 
     assert (row["axis_tag"], row["curve"], row["points_m"]) == ("A", "IfcArcIndex", [])
 
 
-def test_get_grid_extents_skips_an_axis_stating_no_line(monkeypatch: Any) -> None:
+def test_get_grid_extents_skips_an_axis_stating_no_line() -> None:
     """A curved axis leaves the extents to the straight ones instead of emptying them."""
-    _place_at(monkeypatch)
-    arc = FakeIndexedPolyCurve(
-        Points=FakeCoordList([(0.0, 0.0), (1000.0, 500.0), (2000.0, 0.0)]),
-        Segments=[FakeArcIndex((1, 2, 3))],
-    )
-    ifc = FakeIfc(
-        [
-            FakeGrid(
-                GlobalId="grid-a",
-                UAxes=[
-                    FakeAxis(arc, AxisTag="A"),
-                    FakeAxis(
-                        FakePolyline([FakePoint((0.0, 0.0)), FakePoint((4000.0, 0.0))]),
-                        AxisTag="B",
-                    ),
-                ],
-            )
-        ]
-    )
+    ifc = _millimetre_file()
+    grid = _grid(ifc, "grid-a")
+    _add_axis(ifc, grid, "UAxes", _arc(ifc), tag="A")
+    _add_axis(ifc, grid, "UAxes", _polyline(ifc, [(0.0, 0.0), (4000.0, 0.0)]), tag="B")
 
     extents = get_grid_extents(ifc)
 
@@ -175,103 +118,50 @@ def test_get_grid_extents_skips_an_axis_stating_no_line(monkeypatch: Any) -> Non
     assert (extents["axis_count"], extents["max_x_m"]) == (1, 4.0)
 
 
-def _place_at(monkeypatch: Any, offset_x: float = 0.0, offset_y: float = 0.0) -> None:
-    monkeypatch.setattr(
-        grid_module.ifcopenshell.util.unit, "calculate_unit_scale", lambda _ifc: 0.001
+def _millimetre_file() -> ifcopenshell.file:
+    ifc = ifcopenshell.api.project.create_file(version="IFC4")
+    ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcProject")
+    ifcopenshell.api.unit.assign_unit(ifc)
+    return ifc
+
+
+def _grid(
+    ifc: ifcopenshell.file, global_id: str, offset: tuple[float, float] = (0.0, 0.0)
+) -> ifcopenshell.entity_instance:
+    grid = ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcGrid")
+    grid.GlobalId = global_id
+    grid.ObjectPlacement = ifc.createIfcLocalPlacement(
+        None, ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((*offset, 0.0)))
     )
-    monkeypatch.setattr(
-        grid_module.ifcopenshell.util.placement,
-        "get_local_placement",
-        lambda _placement: [
-            [1.0, 0.0, 0.0, offset_x],
-            [0.0, 1.0, 0.0, offset_y],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ],
+    return grid
+
+
+def _add_axis(
+    ifc: ifcopenshell.file,
+    grid: ifcopenshell.entity_instance,
+    axes: str,
+    curve: ifcopenshell.entity_instance,
+    tag: str | None = "A",
+) -> None:
+    axis = ifc.createIfcGridAxis(tag, curve, True)
+    setattr(grid, axes, [*(getattr(grid, axes) or []), axis])
+
+
+def _polyline(
+    ifc: ifcopenshell.file, points: Sequence[tuple[float, ...]]
+) -> ifcopenshell.entity_instance:
+    return ifc.createIfcPolyline([ifc.createIfcCartesianPoint(point) for point in points])
+
+
+def _indexed_poly_curve(
+    ifc: ifcopenshell.file,
+    points: Sequence[tuple[float, float]],
+    segments: Sequence[ifcopenshell.entity_instance],
+) -> ifcopenshell.entity_instance:
+    return ifc.createIfcIndexedPolyCurve(ifc.createIfcCartesianPointList2D(points), segments)
+
+
+def _arc(ifc: ifcopenshell.file) -> ifcopenshell.entity_instance:
+    return _indexed_poly_curve(
+        ifc, [(0.0, 0.0), (1000.0, 500.0), (2000.0, 0.0)], [ifc.createIfcArcIndex((1, 2, 3))]
     )
-
-
-@dataclass
-class FakePoint:
-    Coordinates: tuple[float, ...]
-
-
-@dataclass
-class FakeCurve:
-    def is_a(self, class_name: str | None = None) -> Any:
-        if class_name is None:
-            return "IfcCurve"
-        return class_name == "IfcCurve"
-
-
-@dataclass
-class FakePolyline:
-    Points: list[FakePoint]
-
-    def is_a(self, class_name: str | None = None) -> Any:
-        if class_name is None:
-            return "IfcPolyline"
-        return class_name == "IfcPolyline"
-
-
-@dataclass
-class FakeAxis:
-    AxisCurve: FakeCurve | FakePolyline
-    AxisTag: str | None = None
-
-
-@dataclass
-class FakeGrid:
-    GlobalId: str
-    UAxes: list[FakeAxis] | None = None
-    VAxes: list[FakeAxis] | None = None
-    WAxes: list[FakeAxis] | None = None
-    ObjectPlacement: object | None = None
-
-
-@dataclass
-class FakeIfc:
-    grids: list[FakeGrid]
-
-    def by_type(self, class_name: str) -> list[FakeGrid]:
-        return self.grids if class_name == "IfcGrid" else []
-
-
-@dataclass
-class FakeCoordList:
-    CoordList: list[tuple[float, ...]]
-
-
-@dataclass
-class FakeIndexedPolyCurve:
-    Points: FakeCoordList
-    Segments: list[Any] | None = None
-
-    def is_a(self, class_name: str | None = None) -> Any:
-        if class_name is None:
-            return "IfcIndexedPolyCurve"
-        return class_name == "IfcIndexedPolyCurve"
-
-
-@dataclass
-class FakeSegment:
-    indices: tuple[int, ...]
-
-    def __getitem__(self, item: int) -> tuple[int, ...]:
-        return self.indices
-
-
-@dataclass
-class FakeLineIndex(FakeSegment):
-    def is_a(self, class_name: str | None = None) -> Any:
-        if class_name is None:
-            return "IfcLineIndex"
-        return class_name == "IfcLineIndex"
-
-
-@dataclass
-class FakeArcIndex(FakeSegment):
-    def is_a(self, class_name: str | None = None) -> Any:
-        if class_name is None:
-            return "IfcArcIndex"
-        return class_name == "IfcArcIndex"

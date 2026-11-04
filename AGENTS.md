@@ -21,6 +21,7 @@
 - `core/` is MCP-agnostic so it can be extracted into shared libraries later.
 - `tools/` depend only on `ModelIndex`, keeping server transport concerns out of domain logic.
 - `core/relationships.py` contains cached element containment and aggregate helper maps shared by relationship tools.
+- `core/ifc_util.py` holds general IFC helpers in `ifcopenshell.util` form: entities in, entities or plain values out, no `ifc_mcp` imports, each covered by `ifcopenshell.api`-built tests under `tests/upstream/`. Anywhere in `core/`, logic `ifcopenshell.util` already provides is called, not reimplemented.
 - Lint rules are isolated pure functions, making severity policy configurable in one place (`lint/config.py`).
 
 ## Domain insights captured in code
