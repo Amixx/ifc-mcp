@@ -21,15 +21,18 @@ def get_grid_axis_coordinates(axis: ifcopenshell.entity_instance) -> npt.NDArray
     directly. Coordinates are in project length units, and 2D points get a Z of
     0.0 before the placement is applied.
 
-    Only an axis made of straight segments has such points: an IfcPolyline, or
-    an IfcIndexedPolyCurve with no IfcArcIndex segment. The points come in the
-    order the curve walks them, with an index repeated by consecutive segments
-    listed once. Any other axis, such as an IfcCircle, a trimmed curve, or an
-    indexed poly curve with an arc segment, returns None.
+    Only two curve classes are read: an IfcPolyline, and an IfcIndexedPolyCurve
+    with no IfcArcIndex segment. The points come in the order the curve walks
+    them, with an index repeated by consecutive segments listed once. Every
+    other axis curve returns None, even one that is geometrically straight:
+    an IfcIndexedPolyCurve with an arc segment, an IfcCircle, an
+    IfcTrimmedCurve, an IfcCompositeCurve, and the IFC4X3 alignment curves
+    such as IfcGradientCurve, IfcSegmentedReferenceCurve and IfcPolynomialCurve.
 
     :param axis: The IfcGridAxis
+    :raises ValueError: If the axis has no AxisCurve or belongs to no IfcGrid.
     :return: An (n, 3) numpy array of points, or None if the axis curve is not
-        made of straight segments.
+        one of the two classes read.
 
     Example:
 
@@ -41,6 +44,8 @@ def get_grid_axis_coordinates(axis: ifcopenshell.entity_instance) -> npt.NDArray
             start, end = points[0], points[-1]
     """
     curve = axis.AxisCurve
+    if curve is None:
+        raise ValueError(f"IfcGridAxis #{axis.id()} {axis.AxisTag!r} has no AxisCurve")
     if curve.is_a("IfcPolyline"):
         points = [point.Coordinates for point in curve.Points]
     elif curve.is_a("IfcIndexedPolyCurve"):
@@ -64,6 +69,9 @@ def get_grid_axis_coordinates(axis: ifcopenshell.entity_instance) -> npt.NDArray
     for row, point in enumerate(points):
         local[row, : len(point)] = point
 
-    grid = (axis.PartOfU or axis.PartOfV or axis.PartOfW)[0]
+    grids = axis.PartOfU or axis.PartOfV or axis.PartOfW
+    if not grids:
+        raise ValueError(f"IfcGridAxis #{axis.id()} {axis.AxisTag!r} belongs to no IfcGrid")
+    grid = grids[0]
     matrix = ifcopenshell.util.placement.get_local_placement(grid.ObjectPlacement)
     return (matrix @ local.T).T[:, :3]

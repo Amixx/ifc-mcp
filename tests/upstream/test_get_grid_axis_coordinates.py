@@ -13,6 +13,12 @@ class IFC4:
         self.file = ifcopenshell.api.project.create_file(version="IFC4")
 
 
+class IFC4X3:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.file = ifcopenshell.api.project.create_file(version="IFC4X3")
+
+
 class IFC2X3:
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -106,6 +112,32 @@ class TestGetGridAxisCoordinatesIFC4(IFC4):
         )
         axis = add_grid(self.file, curve=circle)
         assert get_grid_axis_coordinates(axis) is None
+
+    def test_raising_for_an_axis_without_a_curve(self):
+        file = ifcopenshell.file.from_string(
+            "ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');"
+            "FILE_NAME('','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;"
+            "#1=IFCGRIDAXIS('A',$,.T.);"
+            "#2=IFCGRID('0YvctVUKr0kugbFTf53O9L',$,$,$,$,$,$,(#1),(),$,$);"
+            "ENDSEC;END-ISO-10303-21;"
+        )
+        with pytest.raises(ValueError, match="#1 'A' has no AxisCurve"):
+            get_grid_axis_coordinates(file.by_id(1))
+
+    def test_raising_for_an_axis_outside_a_grid(self):
+        axis = self.file.createIfcGridAxis("B", polyline(self.file, ((0.0, 0.0), (1.0, 0.0))), True)
+        with pytest.raises(ValueError, match=rf"#{axis.id()} 'B' belongs to no IfcGrid"):
+            get_grid_axis_coordinates(axis)
+
+
+class TestGetGridAxisCoordinatesIFC4X3(IFC4X3):
+    def test_applying_the_grid_placement(self):
+        axis = add_grid(
+            self.file,
+            curve=polyline(self.file, ((0.0, 0.0), (10.0, 0.0))),
+            object_placement=placement(self.file, (2.0, 3.0, 4.0), x_axis=(0.0, 1.0, 0.0)),
+        )
+        assert np.allclose(get_grid_axis_coordinates(axis), [[2.0, 3.0, 4.0], [2.0, 13.0, 4.0]])
 
 
 class TestGetGridAxisCoordinatesIFC2X3(IFC2X3):
