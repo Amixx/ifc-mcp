@@ -462,11 +462,11 @@ def _extract_extruded_area_solid_bounds(
 
     depth = float(getattr(item, "Depth", 0.0) or 0.0)
     direction = _direction_ratios(getattr(item, "ExtrudedDirection", None), default=(0.0, 0.0, 1.0))
-    item_matrix = (
-        parent_matrix
-        @ _axis2placement_matrix(getattr(item, "Position", None))
-        @ _axis2placement_matrix(getattr(getattr(item, "SweptArea", None), "Position", None))
-    )
+    item_matrix = parent_matrix
+    for placement in (item.Position, getattr(item.SweptArea, "Position", None)):
+        if (matrix := _axis2placement_matrix(placement)) is None:
+            return None
+        item_matrix = item_matrix @ matrix
     points: list[tuple[float, float, float, float]] = []
     for x, y in profile_points:
         points.append((x, y, 0.0, 1.0))
@@ -506,13 +506,13 @@ def _curve_points_2d(curve: Any) -> list[tuple[float, float]]:
     return points
 
 
-def _axis2placement_matrix(placement: Any) -> np.ndarray:
+def _axis2placement_matrix(placement: Any) -> np.ndarray | None:
     if placement is None:
         return np.eye(4)
     try:
         return ifcopenshell.util.placement.get_axis2placement(placement)
-    except (AttributeError, RuntimeError, TypeError):
-        return np.eye(4)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
 
 
 def _direction_ratios(

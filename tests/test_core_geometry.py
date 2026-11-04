@@ -280,6 +280,44 @@ def test_batch_bounds_leaves_a_body_with_an_unreadable_mapped_item_to_tessellati
     assert _extent(parametric_row) == _extent(tessellated_row)
 
 
+def test_batch_bounds_leaves_an_unreadable_profile_placement_to_tessellation() -> None:
+    ifc = ifcopenshell.api.project.create_file(version="IFC4X3")
+    ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcProject")
+    ifcopenshell.api.unit.assign_unit(ifc)
+    model = ifcopenshell.api.context.add_context(ifc, context_type="Model")
+    body = ifcopenshell.api.context.add_context(
+        ifc, context_type="Model", context_identifier="Body", target_view="MODEL_VIEW", parent=model
+    )
+    curve = ifc.createIfcPolyline(
+        [ifc.createIfcCartesianPoint((0.0, 0.0)), ifc.createIfcCartesianPoint((10000.0, 0.0))]
+    )
+    location = ifc.createIfcPointByDistanceExpression(
+        ifc.createIfcLengthMeasure(5000.0), None, None, None, curve
+    )
+    profile = ifc.createIfcRectangleProfileDef(
+        "AREA", None, ifc.createIfcAxis2Placement2D(location), 1000.0, 1000.0
+    )
+    solid = ifc.createIfcExtrudedAreaSolid(
+        profile,
+        ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0))),
+        ifc.createIfcDirection((0.0, 0.0, 1.0)),
+        1000.0,
+    )
+    wall = ifcopenshell.api.root.create_entity(ifc, ifc_class="IfcWall")
+    wall.ObjectPlacement = ifc.createIfcLocalPlacement(
+        None, ifc.createIfcAxis2Placement3D(ifc.createIfcCartesianPoint((0.0, 0.0, 0.0)))
+    )
+    wall.Representation = ifc.createIfcProductDefinitionShape(
+        None, None, [ifc.createIfcShapeRepresentation(body, "Body", "SweptSolid", [solid])]
+    )
+
+    [parametric_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=True).bounds
+    [tessellated_row] = extract_element_bounds_batch(ifc, threads=1, prefer_parametric=False).bounds
+
+    assert parametric_row["source"] == "ifcopenshell.geom world coordinates"
+    assert _extent(parametric_row) == _extent(tessellated_row)
+
+
 def _wall_with_mapped_box(
     *,
     origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
